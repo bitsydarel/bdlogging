@@ -4,9 +4,9 @@ import 'package:bdlogging/src/bd_level.dart';
 import 'package:bdlogging/src/bd_log_record.dart';
 import 'package:bdlogging/src/formatters/default_log_formatter.dart';
 import 'package:bdlogging/src/handlers/file_log_handler.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart' as mockito;
 import 'package:path/path.dart' as path;
+import 'package:test/test.dart';
 
 void main() {
   final BDLogRecord logRecord = BDLogRecord(BDLevel.debug, 'text');
@@ -29,7 +29,7 @@ void main() {
         maxLogSize: 1,
         maxFilesCount: 5,
         logFileDirectory: directory,
-        minimumSupportedLevel: BDLevel.error,
+        supportedLevels: <BDLevel>[BDLevel.error],
       );
 
       expect(handler.writer, isNull);
@@ -48,7 +48,7 @@ void main() {
         maxLogSize: 1,
         maxFilesCount: 5,
         logFileDirectory: directory,
-        minimumSupportedLevel: BDLevel.error,
+        supportedLevels: <BDLevel>[BDLevel.error],
       )
         ..writer = writerMock
         ..currentLogFile = fileMock;
@@ -75,7 +75,7 @@ void main() {
         maxLogSize: 1,
         maxFilesCount: 5,
         logFileDirectory: directory,
-        minimumSupportedLevel: BDLevel.error,
+        supportedLevels: <BDLevel>[BDLevel.error],
       )
         ..writer = _WriterMock()
         ..currentLogFile = fileMock;
@@ -97,7 +97,7 @@ void main() {
         maxLogSize: 1,
         maxFilesCount: 5,
         logFileDirectory: directory,
-        minimumSupportedLevel: BDLevel.error,
+        supportedLevels: <BDLevel>[BDLevel.error],
       )
         ..writer = writerMock
         ..currentLogFile = fileMock;
@@ -121,7 +121,7 @@ void main() {
         maxLogSize: 1,
         maxFilesCount: 5,
         logFileDirectory: directory,
-        minimumSupportedLevel: BDLevel.error,
+        supportedLevels: <BDLevel>[BDLevel.error],
       )
         ..writer = writerMock
         ..currentLogFile = fileMock;
@@ -275,7 +275,7 @@ void main() {
         maxLogSize: 1,
         maxFilesCount: 5,
         logFileDirectory: Directory('random'),
-        minimumSupportedLevel: BDLevel.error,
+        supportedLevels: <BDLevel>[BDLevel.error],
       );
 
       expect(handler.supportLevel(BDLevel.info), isFalse);
@@ -292,7 +292,7 @@ void main() {
       maxLogSize: 1,
       maxFilesCount: 5,
       logFileDirectory: Directory('random'),
-      minimumSupportedLevel: BDLevel.error,
+      supportedLevels: <BDLevel>[BDLevel.error],
     )..writer = writer;
 
     expect(handler.writer, isNotNull);
@@ -356,7 +356,7 @@ void main() {
       maxLogSize: 1,
       maxFilesCount: 5,
       logFileDirectory: directory,
-      minimumSupportedLevel: BDLevel.error,
+      supportedLevels: <BDLevel>[BDLevel.error],
     );
 
     await handler.handleRecord(logRecord);
@@ -375,7 +375,7 @@ void main() {
       maxLogSize: 1,
       maxFilesCount: 5,
       logFileDirectory: directory,
-      minimumSupportedLevel: BDLevel.error,
+      supportedLevels: <BDLevel>[BDLevel.error],
     )..currentLogIndex = 10;
 
     handler.initializeFileSink(handler.logFileDirectory);
@@ -390,7 +390,7 @@ void main() {
       maxLogSize: 1,
       maxFilesCount: 5,
       logFileDirectory: directory,
-      minimumSupportedLevel: BDLevel.error,
+      supportedLevels: <BDLevel>[BDLevel.error],
     );
 
     mockito

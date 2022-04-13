@@ -1,8 +1,8 @@
 import 'package:bdlogging/src/bd_level.dart';
 import 'package:bdlogging/src/bd_log_record.dart';
 import 'package:bdlogging/src/formatters/default_log_formatter.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
+import 'package:test/test.dart';
 
 void main() {
   const String newLine = '\n';

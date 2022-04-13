@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
-import 'dart:developer';
 
 import 'package:bdlogging/src/bd_level.dart';
 import 'package:bdlogging/src/bd_log_formatter.dart';
 import 'package:bdlogging/src/bd_log_handler.dart';
 import 'package:bdlogging/src/bd_log_record.dart';
 import 'package:bdlogging/src/formatters/default_log_formatter.dart';
-import 'package:flutter/foundation.dart';
 import 'package:io/ansi.dart' as ansi;
+import 'package:meta/meta.dart';
 
 const LineSplitter _lineSplitter = LineSplitter();
 
@@ -20,8 +19,44 @@ typedef RescheduleCallback = void Function(
   void Function() callback,
 );
 
+/// A [Function] that print the line.
+typedef LinePrinter = void Function(String line);
+
 /// A implementation of [BDLogHandler] that print [BDLogRecord] to the console.
 class ConsoleLogHandler extends BDLogHandler {
+  /// Create a new instance of the [ConsoleLogHandler].
+  ///
+  /// Or reuse a already available instance.
+  factory ConsoleLogHandler({
+    BDLogFormatter logFormatter = const DefaultLogFormatter(),
+    List<BDLevel> supportedLevels = const <BDLevel>[BDLevel.debug],
+    LinePrinter? printer,
+  }) {
+    return ConsoleLogHandler.private(
+      supportedLevels,
+      logFormatter,
+      Queue<String>(),
+      Stopwatch()
+        ..reset()
+        ..start(),
+      (Duration duration, void Function() callback) {
+        Timer(duration, callback);
+      },
+      printer ?? print,
+    );
+  }
+
+  /// Private constructor mostly for testing purpose.
+  @visibleForTesting
+  const ConsoleLogHandler.private(
+    this.supportedLevels,
+    this.logFormatter,
+    this._logsBuffer,
+    this._printPauseWatcher,
+    this._reschedulePrinting,
+    this._printer,
+  );
+
   /// Maximum characters length in byte that can be printed before
   /// [maxPrintPause] is required.
   static const int maxPrintCapacity = 12 * 1024;
@@ -36,41 +71,14 @@ class ConsoleLogHandler extends BDLogHandler {
   /// [BDLogFormatter] that define how [BDLogRecord] should printed on console.
   final BDLogFormatter logFormatter;
 
-  /// Minimum supported [BDLevel] for [BDLogRecord].
-  final BDLevel minimumSupportedLevel;
+  /// Supported [BDLevel] of [BDLogRecord].
+  final List<BDLevel> supportedLevels;
 
   /// [RescheduleCallback] that's called to reschedule log printing.
   final RescheduleCallback _reschedulePrinting;
 
-  /// Create a new instance of the [ConsoleLogHandler].
-  ///
-  /// Or reuse a already available instance.
-  factory ConsoleLogHandler({
-    BDLogFormatter logFormatter = const DefaultLogFormatter(),
-    BDLevel minimumSupportedLevel = BDLevel.debug,
-  }) {
-    return ConsoleLogHandler.private(
-      minimumSupportedLevel,
-      logFormatter,
-      Queue<String>(),
-      Stopwatch()
-        ..reset()
-        ..start(),
-      (Duration duration, void Function() callback) {
-        Timer(duration, callback);
-      },
-    );
-  }
-
-  /// Private constructor mostly for testing purpose.
-  @visibleForTesting
-  const ConsoleLogHandler.private(
-    this.minimumSupportedLevel,
-    this.logFormatter,
-    this._logsBuffer,
-    this._printPauseWatcher,
-    this._reschedulePrinting,
-  );
+  /// Function that's called to print a line to the console.
+  final LinePrinter _printer;
 
   @override
   Future<void> handleRecord(BDLogRecord record) async {
@@ -84,7 +92,7 @@ class ConsoleLogHandler extends BDLogHandler {
   }
 
   @override
-  bool supportLevel(BDLevel level) => level >= minimumSupportedLevel;
+  bool supportLevel(BDLevel level) => supportedLevels.contains(level);
 
   /// Implementation of print that throttles messages.
   /// This avoids dropping messages on platforms that rate-limit their logging.
@@ -106,8 +114,7 @@ class ConsoleLogHandler extends BDLogHandler {
         printedCharacters += line.length;
         // because we want to print to the default console in any
         // run environment.
-        // ignore: avoid_print
-        log(colorLine(line));
+        _printer(colorLine(line));
       }
 
       // we start watcher again after to printing, so we can be sure that we

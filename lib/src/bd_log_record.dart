@@ -1,5 +1,5 @@
 import 'package:bdlogging/src/bd_level.dart';
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 /// Logging record.
 @immutable
