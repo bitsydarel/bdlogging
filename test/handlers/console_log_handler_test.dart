@@ -22,7 +22,7 @@ void main() {
     ' minimumSupportedBDLevel',
     () {
       final ConsoleLogHandler handler = ConsoleLogHandler(
-        minimumSupportedLevel: BDLevel.error,
+        supportedLevels: <BDLevel>[BDLevel.error],
       );
 
       expect(handler.supportLevel(BDLevel.info), isFalse);
@@ -109,11 +109,12 @@ void main() {
           final _MockPauseWatcher printPauseWatcher = _MockPauseWatcher();
 
           final ConsoleLogHandler handler = ConsoleLogHandler.private(
-            BDLevel.info,
+            <BDLevel>[BDLevel.info],
             const DefaultLogFormatter(),
             logBuffer,
             printPauseWatcher,
             (Duration _, void Function() __) {},
+            print,
           );
 
           mockito
@@ -146,11 +147,12 @@ void main() {
           final _MockPauseWatcher printPauseWatcher = _MockPauseWatcher();
 
           final ConsoleLogHandler handler = ConsoleLogHandler.private(
-            BDLevel.info,
+            <BDLevel>[BDLevel.info],
             const DefaultLogFormatter(),
             logBuffer,
             printPauseWatcher,
             (Duration _, void Function() __) {},
+            print,
           );
 
           mockito
@@ -189,11 +191,12 @@ void main() {
               _MockRescheduleCallback();
 
           final ConsoleLogHandler handler = ConsoleLogHandler.private(
-            BDLevel.info,
+            <BDLevel>[BDLevel.info],
             const DefaultLogFormatter(),
             logBuffer,
             printPauseWatcher,
             rescheduleCallback,
+            print,
           );
 
           mockito
@@ -228,11 +231,12 @@ void main() {
               _MockRescheduleCallback();
 
           final ConsoleLogHandler handler = ConsoleLogHandler.private(
-            BDLevel.info,
+            <BDLevel>[BDLevel.info],
             const DefaultLogFormatter(),
             Queue<String>(),
             printPauseWatcher,
             rescheduleCallback,
+            print,
           );
 
           mockito
@@ -257,11 +261,12 @@ void main() {
           final _MockPauseWatcher printPauseWatcher = _MockPauseWatcher();
 
           final ConsoleLogHandler handler = ConsoleLogHandler.private(
-            BDLevel.info,
+            <BDLevel>[BDLevel.info],
             const DefaultLogFormatter(),
             Queue<String>(),
             printPauseWatcher,
             (Duration duration, void Function() _) {},
+            print,
           );
 
           mockito
@@ -291,11 +296,12 @@ void main() {
             );
 
           final ConsoleLogHandler handler = ConsoleLogHandler.private(
-            BDLevel.info,
+            <BDLevel>[BDLevel.info],
             const DefaultLogFormatter(),
             logBuffer,
             printPauseWatcher,
             (Duration duration, void Function() _) {},
+            print,
           );
 
           mockito
@@ -326,11 +332,12 @@ void main() {
       final _MockPauseWatcher printPauseWatcher = _MockPauseWatcher();
 
       final ConsoleLogHandler handler = ConsoleLogHandler.private(
-        BDLevel.info,
+        <BDLevel>[BDLevel.info],
         formatter,
         logBuffer,
         printPauseWatcher,
         (Duration duration, void Function() _) {},
+        print,
       );
 
       mockito.when(() => formatter.format(record)).thenReturn(record.message);
@@ -349,11 +356,12 @@ void main() {
         'throttleLogPrint', () async {
       final Queue<String> _logBuffer = Queue<String>();
       final ConsoleLogHandler handler = ConsoleLogHandler.private(
-        BDLevel.info,
+        <BDLevel>[BDLevel.info],
         const DefaultLogFormatter(),
         _logBuffer,
         Stopwatch(),
         (Duration duration, void Function() _) {},
+        print,
       );
 
       await handler.handleRecord(BDLogRecord(BDLevel.debug, 'abc'));

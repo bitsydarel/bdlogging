@@ -7,28 +7,37 @@ import 'package:bdlogging/src/bd_cleanable_log_handler.dart';
 import 'package:bdlogging/src/bd_level.dart';
 import 'package:bdlogging/src/bd_log_handler.dart';
 import 'package:bdlogging/src/bd_log_record.dart';
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
-/// [BDLogging] used to log messages.
-class BDLogging {
+export 'src/bd_cleanable_log_handler.dart';
+export 'src/bd_level.dart';
+export 'src/bd_log_formatter.dart';
+export 'src/bd_log_handler.dart';
+export 'src/bd_log_record.dart';
+export 'src/formatters/default_log_formatter.dart';
+export 'src/handlers/console_log_handler.dart';
+export 'src/handlers/file_log_handler.dart';
+
+/// [BDLogger] used to log messages.
+class BDLogger {
   /// Get an instance of the logger with the following name
-  factory BDLogging() {
-    return _instance ??= BDLogging.private(
+  factory BDLogger() {
+    return _instance ??= BDLogger.private(
       'FlutterLogger',
       <BDLogHandler>[],
-      StreamController<BDLogRecord>.broadcast(sync: true),
+      StreamController<BDLogRecord>.broadcast(),
     );
   }
 
   /// Create a new instance of the Logger.
   @visibleForTesting
-  BDLogging.private(this.name, this._handlers, this._logRecordController) {
+  BDLogger.private(this.name, this._handlers, this._logRecordController) {
     _logRecordController.stream.listen(_handleLogRecord);
   }
 
-  static BDLogging? _instance;
+  static BDLogger? _instance;
 
-  /// [BDLogging]'s name.
+  /// [BDLogger]'s name.
   final String name;
 
   final List<BDLogHandler> _handlers;
@@ -85,11 +94,11 @@ class BDLogging {
     );
   }
 
-  /// Log a message at [BDLogging.error]
+  /// Log a message at [BDLogger.error]
   void error(
     final String message,
-    final Object error,
-    final StackTrace stackTrace, {
+    final Object error, {
+    final StackTrace? stackTrace,
     final String? tag,
   }) {
     log(
@@ -114,7 +123,7 @@ class BDLogging {
   void log(
     final BDLevel level,
     final String message, {
-    final dynamic error,
+    final Object? error,
     final StackTrace? stackTrace,
   }) {
     final BDLogRecord record = BDLogRecord(
@@ -127,10 +136,12 @@ class BDLogging {
     _logRecordController.add(record);
   }
 
-  /// Destroy the current instance of [BDLogging].
+  /// Destroy the current instance of [BDLogger].
   ///
   /// It also call clean on every [BDCleanableLogHandler].
   Future<void> destroy() async {
+    await _logRecordController.sink.close();
+
     for (final BDCleanableLogHandler handler
         in _handlers.whereType<BDCleanableLogHandler>()) {
       await handler.clean();

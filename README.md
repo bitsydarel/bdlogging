@@ -1,39 +1,70 @@
-<!-- 
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# BDLOGGING (Logging package)
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/guides/libraries/writing-package-pages). 
+A flutter logging package for dart and flutter.
 
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-library-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/developing-packages). 
--->
-
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
-
-## Features
-
-TODO: List what your package can do. Maybe include images, gifs, or videos.
+Provide logging functionality with plug-ins log handlers.
 
 ## Getting started
 
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+BDLogging delegate come with two out-of-the-box log handler.
 
+* ConsoleLogHandler (Log events to the console)
+* FileLogHandler (Log events to one or multiple files)
+
+You can create your own log handler that cover your need by implementing BDLogHandler.
+
+You can add as many log handler message with be dispatched to them if meeting the requirement.
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder. 
+###  Get an instance of BDLogger.
 
 ```dart
-const like = 'sample';
+final BDLogger logger = BDLogger();
 ```
 
-## Additional information
+Note: BDLogger is a singleton so you can call it anywhere.
 
-TODO: Tell users more about the package: where to find more information, how to 
-contribute to the package, how to file issues, what response they can expect 
-from the package authors, and more.
+### Add your log handler.
+
+```dart
+logger.addHandler(new ConsoleLogHandler());
+```
+
+Note: 
+* You can add as many log handler as you want.
+* You can specify the BDLevel of logging messages that your log handler support.
+
+```dart
+final BDLogger logger = BDLogger();
+
+logger.addHandler(new ConsoleLogHandler());
+
+logger.addHandler(
+  new FileLogHandler(
+    logNamePrefix: 'example',
+    maxLogSize: 5,
+    maxFilesCount: 5,
+    logFileDirectory: Directory.current,
+    supportedLevels: <BDLevel>[BDLevel.error],
+  ),
+);
+```
+### Logging messages
+
+You can log messages and errors using the current available method.
+
+```dart
+final BDLogger logger = BDLogger();
+
+logger.debug(params);
+logger.info(params);
+logger.warning(params);
+logger.error(params);
+logger.log(params);
+```
+
+### Formatting logging messages
+
+BDLogging the interface LogFormatter can be implemented to define how you would wish logging messages to be formatted.
+
+Note: a Default log formatter is provided.

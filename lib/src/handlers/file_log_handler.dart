@@ -5,7 +5,8 @@ import 'package:bdlogging/src/bd_level.dart';
 import 'package:bdlogging/src/bd_log_formatter.dart';
 import 'package:bdlogging/src/bd_log_record.dart';
 import 'package:bdlogging/src/formatters/default_log_formatter.dart';
-import 'package:flutter/foundation.dart';
+import 'package:collection/collection.dart';
+import 'package:meta/meta.dart';
 import 'package:path/path.dart' as path;
 
 /// A implementation of [BDCleanableLogHandler]
@@ -29,14 +30,14 @@ class FileLogHandler extends BDCleanableLogHandler {
   ///
   /// We assume that the [logFileDirectory] provide exist in the file system.
   ///
-  /// [minimumSupportedLevel] will be used to discard [BDLogRecord] with
-  /// [BDLevel] lower than [minimumSupportedLevel].
+  /// [supportedLevels] will be used to discard [BDLogRecord] with
+  /// [BDLevel] lower than [supportedLevels].
   FileLogHandler({
     required this.logNamePrefix,
     required this.maxLogSize,
     required this.maxFilesCount,
     required this.logFileDirectory,
-    this.minimumSupportedLevel = BDLevel.warning,
+    this.supportedLevels = const <BDLevel>[BDLevel.warning],
     this.logFormatter = const DefaultLogFormatter(),
   })  : assert(
           logNamePrefix.isNotEmpty,
@@ -50,17 +51,22 @@ class FileLogHandler extends BDCleanableLogHandler {
   /// Prefix of each log files created by this [FileLogHandler].
   final String logNamePrefix;
 
-  /// Maximum size of a log file.
+  /// Maximum size of a log file in MB.
   final int maxLogSize;
 
   /// Maximum count of files to keep.
+  ///
+  /// will be used to deleted old log files.
+  /// If in the [logFileDirectory] there's files with prefix [logNamePrefix]
+  /// and the count of files is greater than [maxFilesCount],
+  /// older files will be deleted.
   final int maxFilesCount;
 
   /// Directory where to store the log files.
   final Directory logFileDirectory;
 
-  /// Minimum supported [BDLevel] for [BDLogRecord].
-  final BDLevel minimumSupportedLevel;
+  /// Supported [BDLevel] of [BDLogRecord].
+  final List<BDLevel> supportedLevels;
 
   /// [BDLogFormatter] that define how [BDLogRecord] should be written.
   final BDLogFormatter logFormatter;
@@ -85,7 +91,7 @@ class FileLogHandler extends BDCleanableLogHandler {
   int currentLogIndex = 0;
 
   @override
-  bool supportLevel(BDLevel level) => level >= minimumSupportedLevel;
+  bool supportLevel(BDLevel level) => supportedLevels.contains(level);
 
   @override
   Future<void> handleRecord(BDLogRecord record) async {
@@ -97,14 +103,45 @@ class FileLogHandler extends BDCleanableLogHandler {
         currentLogFile.lengthSync() / (1024 * 1024);
 
     if (currentFileSizeInMB >= maxLogSize) {
-      writer?.flushSync();
-      writer?.closeSync();
-      currentLogIndex++;
-      writer = updateCurrentLogFile(logFileDirectory);
-      assert(writer != null, 'sink should not be null here');
+      onFileExceededMaxSize();
+
+      removeOldLogFilesIfRequired();
     }
 
     writer?.writeStringSync(logFormatter.format(record));
+  }
+
+  /// Called when the current log file exceeded [maxLogSize].
+  @visibleForTesting
+  void onFileExceededMaxSize() {
+    writer?.flushSync();
+    writer?.closeSync();
+
+    currentLogIndex++;
+
+    writer = updateCurrentLogFile(logFileDirectory);
+    assert(writer != null, 'sink should not be null here');
+  }
+
+  /// Remove the old log files if the current count of log files exceed the
+  /// number of log files.
+  @visibleForTesting
+  void removeOldLogFilesIfRequired() {
+    final List<File> sortedLogFiles = getLogFiles().sortedBy<num>((File file) {
+      final String fileName = path.basenameWithoutExtension(file.path);
+
+      return getLogFileIndex(fileName);
+    });
+
+    final int filesToRemove = sortedLogFiles.length - maxFilesCount;
+
+    // if we already exceeded the max files count allowed.
+    // we delete the oldest.
+    if (filesToRemove > 0) {
+      sortedLogFiles.sublist(0, filesToRemove).forEach((File oldFile) {
+        oldFile.deleteSync();
+      });
+    }
   }
 
   @override

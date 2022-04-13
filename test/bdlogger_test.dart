@@ -1,9 +1,7 @@
 import 'dart:async';
 
 import 'package:bdlogging/bdlogging.dart';
-import 'package:bdlogging/src/bd_log_handler.dart';
-import 'package:bdlogging/src/bd_log_record.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 import 'test_log_handler.dart';
 
@@ -11,20 +9,20 @@ void main() {
   tearDown(
     // destroy the singleton of BDLogging after each test.
     // so that a new instance is created on each test.
-    BDLogging().destroy,
+    BDLogger().destroy,
   );
 
   test(
     'only one instance of a logger can exist until destroy is call',
-    () {
-      final BDLogging firstCallLogger = BDLogging();
-      final BDLogging secondCallLogger = BDLogging();
+    () async {
+      final BDLogger firstCallLogger = BDLogger();
+      final BDLogger secondCallLogger = BDLogger();
 
       expect(firstCallLogger, same(secondCallLogger));
 
-      firstCallLogger.destroy();
+      await firstCallLogger.destroy();
 
-      final BDLogging newLogger = BDLogging();
+      final BDLogger newLogger = BDLogger();
 
       expect(firstCallLogger, isNot(newLogger));
       expect(secondCallLogger, isNot(newLogger));
@@ -34,7 +32,7 @@ void main() {
   test(
     'should add a new handler when add handler is called',
     () {
-      final BDLogging logger = BDLogging();
+      final BDLogger logger = BDLogger();
 
       expect(logger.handlers, hasLength(0));
 
@@ -49,7 +47,7 @@ void main() {
   test(
     'Should remove handler when remove handler is called',
     () {
-      final BDLogging logger = BDLogging();
+      final BDLogger logger = BDLogger();
       final TestLogHandler logHandler = TestLogHandler();
 
       logger.addHandler(logHandler);
@@ -65,7 +63,7 @@ void main() {
   test(
     'should not allow Logger handlers to be modified outside of the Logger',
     () {
-      final BDLogging logger = BDLogging();
+      final BDLogger logger = BDLogger();
       final TestLogHandler testLogHandler = TestLogHandler();
 
       logger.addHandler(testLogHandler);
@@ -85,7 +83,7 @@ void main() {
       final TestLogHandler firstHandler = TestLogHandler();
       final TestLogHandler secondHandler = TestLogHandler();
 
-      final BDLogging logger = BDLogging.private(
+      final BDLogger logger = BDLogger.private(
         'TestLogger',
         <BDLogHandler>[firstHandler, secondHandler],
         streamController,
