@@ -24,7 +24,7 @@ class FirebaseCrashlyticsLogHandler implements BDLogHandler {
 
     if (error != null) {
       return _crashlytics.recordError(
-        record,
+        _formatter.format(record),
         record.stackTrace,
         reason: record.message,
       );
