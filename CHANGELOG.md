@@ -8,3 +8,7 @@
 ## 0.0.2
 
 * Decreased dependency boundaries on package collection.
+
+## 0.0.3
+
+* Support for fatal exception reporting

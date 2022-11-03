@@ -13,6 +13,7 @@ class BDLogRecord {
     this.message, {
     this.error,
     this.stackTrace,
+    this.isFatalError = false,
   }) : time = DateTime.now();
 
   /// Logging record's logging Level.
@@ -29,6 +30,9 @@ class BDLogRecord {
 
   /// Logging record's stacktrace.
   final StackTrace? stackTrace;
+
+  /// Logging record's a fatal error.
+  final bool isFatalError;
 
   @override
   bool operator ==(Object other) =>
@@ -51,7 +55,7 @@ class BDLogRecord {
 
   @override
   String toString() {
-    return 'LogRecord{level: $level, message: $message, error: $error, '
-        'time: $time, stackTrace: $stackTrace}';
+    return 'BDLogRecord{level: $level, message: $message, error: $error, '
+        'time: $time, stackTrace: $stackTrace, fatalError: $isFatalError}';
   }
 }
