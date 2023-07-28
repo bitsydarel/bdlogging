@@ -23,6 +23,9 @@ class DefaultLogFormatter extends BDLogFormatter {
       ..write('${record.message} ');
 
     if (record.error != null) {
+      if (record.isFatalError) {
+        buffer.write('FATAL ');
+      }
       buffer.write(record.error.toString());
     }
     if (record.stackTrace != null) {

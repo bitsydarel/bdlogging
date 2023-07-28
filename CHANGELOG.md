@@ -8,3 +8,12 @@
 ## 0.0.2
 
 * Decreased dependency boundaries on package collection.
+
+## 0.0.3
+
+* Support for fatal exception reporting
+
+## 1.0.0
+
+* Minimum Dart SDK is now v3.0
+* Upgrade dependencies
