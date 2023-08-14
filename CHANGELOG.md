@@ -14,3 +14,7 @@
 * Added support for dart 3.0.0
 * Added Isolate file handler, that logs into a file but in another isolate.
 * Added a new BDLevel as success for success messages.
+
+## 0.1.1
+
+* Updated package dependencies constraints.
