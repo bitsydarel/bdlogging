@@ -23,10 +23,19 @@ class BDLevel implements Comparable<BDLevel> {
   static const BDLevel warning = BDLevel('WARNING', 5);
 
   /// ERROR logging level for server problems
-  static const BDLevel error = BDLevel('ERROR', 6);
+  static const BDLevel success = BDLevel('SUCCESS', 6);
+
+  /// ERROR logging level for server problems
+  static const BDLevel error = BDLevel('ERROR', 7);
 
   /// List of all the levels currently supported [BDLevel].
-  static const List<BDLevel> levels = <BDLevel>[debug, info, warning, error];
+  static const List<BDLevel> levels = <BDLevel>[
+    debug,
+    info,
+    warning,
+    success,
+    error
+  ];
 
   @override
   int compareTo(BDLevel other) => importance - other.importance;

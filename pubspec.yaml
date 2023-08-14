@@ -1,10 +1,10 @@
 name: bdlogging
 description: A Flutter package that provide logging capability for flutter apps.
-version: 0.0.2
+version: 0.1.0
 homepage: https://github.com/bitsydarel/bdlogging
 
 environment:
-  sdk: '>=2.14.0 <3.0.0'
+  sdk: '>=2.14.0 <4.0.0'
 
 dependencies:
   collection: '>=1.15.0 <2.0.0'
@@ -15,9 +15,9 @@ dependencies:
   path: '>=1.8.0 <2.0.0'
 
 dev_dependencies:
-  flutter_code_style: ^2.1.1
+  flutter_code_style: ^2.2.0
   mocktail: '>=0.1.4 <1.0.0'
-  test: '>=1.16.6 <2.0.0'
+  test: '>=1.24.4 <2.0.0'
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

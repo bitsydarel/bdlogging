@@ -91,6 +91,20 @@ void main() {
           expect(coloredLog, endsWith(ansiMarkerEnd));
         });
       });
+
+      test('should color line with green color for SUCCESS log BDLevel', () {
+        const String log = '2021-06-09 14:40:24.863623 SUCCESS: '
+            'Days until death 10 at logged 2021-06-09 14:40:24.859826';
+
+        final String ansiMarkerStart = getAnsiMarkerStart(ansi.green.code);
+
+        ansi.overrideAnsiOutput<void>(true, () {
+          final String coloredLog = handler.colorLine(log);
+
+          expect(coloredLog, startsWith(ansiMarkerStart));
+          expect(coloredLog, endsWith(ansiMarkerEnd));
+        });
+      });
     },
   );
 

@@ -94,6 +94,11 @@ class BDLogger {
     );
   }
 
+  /// Log a message at [BDLevel.success].
+  void success(final String message, {final String? tag}) {
+    log(BDLevel.success, tag != null ? '$tag: $message' : message);
+  }
+
   /// Log a message at [BDLogger.error]
   void error(
     final String message,

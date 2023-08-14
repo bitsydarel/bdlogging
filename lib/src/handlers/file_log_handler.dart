@@ -18,7 +18,7 @@ class FileLogHandler extends BDCleanableLogHandler {
   /// for each log file created by the instance of this [FileLogHandler].
   /// It's recommended that the [logNamePrefix] be unique in the app.
   ///
-  /// [maxLogSize] in MB will be used as the maximum size of each
+  /// [maxLogSizeInMb] in MB will be used as the maximum size of each
   /// log file created by the instance of this [FileLogHandler].
   ///
   /// [maxFilesCount] will be used to deleted old log files.
@@ -34,25 +34,29 @@ class FileLogHandler extends BDCleanableLogHandler {
   /// [BDLevel] lower than [supportedLevels].
   FileLogHandler({
     required this.logNamePrefix,
-    required this.maxLogSize,
+    required this.maxLogSizeInMb,
     required this.maxFilesCount,
     required this.logFileDirectory,
-    this.supportedLevels = const <BDLevel>[BDLevel.warning],
+    this.supportedLevels = const <BDLevel>[
+      BDLevel.warning,
+      BDLevel.success,
+      BDLevel.error,
+    ],
     this.logFormatter = const DefaultLogFormatter(),
   })  : assert(
           logNamePrefix.isNotEmpty,
           'logNamePrefix should not be empty',
         ),
         assert(
-          maxLogSize > 0,
-          'maxLogSize should not be lower than zero',
+          maxLogSizeInMb > 0,
+          'maxLogSizeInMb should not be lower than zero',
         );
 
   /// Prefix of each log files created by this [FileLogHandler].
   final String logNamePrefix;
 
   /// Maximum size of a log file in MB.
-  final int maxLogSize;
+  final int maxLogSizeInMb;
 
   /// Maximum count of files to keep.
   ///
@@ -80,7 +84,7 @@ class FileLogHandler extends BDCleanableLogHandler {
   RandomAccessFile? writer;
 
   /// The current log file that logs are written to.
-  /// If this log file exceeds [maxLogSize], current log file will be closed
+  /// If this log file exceeds [maxLogSizeInMb], current log file will be closed
   /// and new one will be created with updateCurrentLogFile method
   @visibleForTesting
   late File currentLogFile;
@@ -102,7 +106,7 @@ class FileLogHandler extends BDCleanableLogHandler {
     final double currentFileSizeInMB =
         currentLogFile.lengthSync() / (1024 * 1024);
 
-    if (currentFileSizeInMB >= maxLogSize) {
+    if (currentFileSizeInMB >= maxLogSizeInMb) {
       onFileExceededMaxSize();
 
       removeOldLogFilesIfRequired();
@@ -111,7 +115,7 @@ class FileLogHandler extends BDCleanableLogHandler {
     writer?.writeStringSync(logFormatter.format(record));
   }
 
-  /// Called when the current log file exceeded [maxLogSize].
+  /// Called when the current log file exceeded [maxLogSizeInMb].
   @visibleForTesting
   void onFileExceededMaxSize() {
     writer?.flushSync();

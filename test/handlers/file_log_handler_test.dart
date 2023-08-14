@@ -26,7 +26,7 @@ void main() {
     test('should call initializeFileSink if writer is null', () async {
       final FileLogHandler handler = FileLogHandler(
         logNamePrefix: 'cx4a',
-        maxLogSize: 1,
+        maxLogSizeInMb: 1,
         maxFilesCount: 5,
         logFileDirectory: directory,
         supportedLevels: <BDLevel>[BDLevel.error],
@@ -45,7 +45,7 @@ void main() {
 
       final FileLogHandler handler = FileLogHandler(
         logNamePrefix: 'cx4a',
-        maxLogSize: 1,
+        maxLogSizeInMb: 1,
         maxFilesCount: 5,
         logFileDirectory: directory,
         supportedLevels: <BDLevel>[BDLevel.error],
@@ -72,7 +72,7 @@ void main() {
 
       final FileLogHandler handler = FileLogHandler(
         logNamePrefix: 'cx4a',
-        maxLogSize: 1,
+        maxLogSizeInMb: 1,
         maxFilesCount: 5,
         logFileDirectory: directory,
         supportedLevels: <BDLevel>[BDLevel.error],
@@ -94,7 +94,7 @@ void main() {
       final RandomAccessFile writerMock = _WriterMock();
       final FileLogHandler handler = FileLogHandler(
         logNamePrefix: 'cx4a',
-        maxLogSize: 1,
+        maxLogSizeInMb: 1,
         maxFilesCount: 5,
         logFileDirectory: directory,
         supportedLevels: <BDLevel>[BDLevel.error],
@@ -118,7 +118,7 @@ void main() {
       const DefaultLogFormatter logFormatter = DefaultLogFormatter();
       final FileLogHandler handler = FileLogHandler(
         logNamePrefix: 'cx4a',
-        maxLogSize: 1,
+        maxLogSizeInMb: 1,
         maxFilesCount: 5,
         logFileDirectory: directory,
         supportedLevels: <BDLevel>[BDLevel.error],
@@ -144,7 +144,7 @@ void main() {
       () {
         final FileLogHandler handler = FileLogHandler(
           logNamePrefix: 'cx4a',
-          maxLogSize: 1,
+          maxLogSizeInMb: 1,
           maxFilesCount: 5,
           logFileDirectory: Directory('random'),
         );
@@ -183,7 +183,7 @@ void main() {
       () {
         final FileLogHandler handler = FileLogHandler(
           logNamePrefix: 'cx4a',
-          maxLogSize: 1,
+          maxLogSizeInMb: 1,
           maxFilesCount: 5,
           logFileDirectory: Directory('random'),
         );
@@ -227,7 +227,7 @@ void main() {
       () {
         final FileLogHandler handler = FileLogHandler(
           logNamePrefix: 'cx4a',
-          maxLogSize: 1,
+          maxLogSizeInMb: 1,
           maxFilesCount: 5,
           logFileDirectory: Directory('_'),
         );
@@ -245,7 +245,7 @@ void main() {
       () {
         final FileLogHandler handler = FileLogHandler(
           logNamePrefix: 'cx4a',
-          maxLogSize: 1,
+          maxLogSizeInMb: 1,
           maxFilesCount: 5,
           logFileDirectory: Directory('_'),
         );
@@ -272,7 +272,7 @@ void main() {
     () {
       final FileLogHandler handler = FileLogHandler(
         logNamePrefix: 'cx4a',
-        maxLogSize: 1,
+        maxLogSizeInMb: 1,
         maxFilesCount: 5,
         logFileDirectory: Directory('random'),
         supportedLevels: <BDLevel>[BDLevel.error],
@@ -289,7 +289,7 @@ void main() {
 
     final FileLogHandler handler = FileLogHandler(
       logNamePrefix: 'cx4a',
-      maxLogSize: 1,
+      maxLogSizeInMb: 1,
       maxFilesCount: 5,
       logFileDirectory: Directory('random'),
       supportedLevels: <BDLevel>[BDLevel.error],
@@ -312,7 +312,7 @@ void main() {
     () {
       final FileLogHandler handler = FileLogHandler(
         logNamePrefix: 'cx4a',
-        maxLogSize: 1,
+        maxLogSizeInMb: 1,
         maxFilesCount: 5,
         logFileDirectory: Directory('_'),
       );
@@ -353,7 +353,7 @@ void main() {
   test('should update current log file', () async {
     final FileLogHandler handler = FileLogHandler(
       logNamePrefix: 'cx4a',
-      maxLogSize: 1,
+      maxLogSizeInMb: 1,
       maxFilesCount: 5,
       logFileDirectory: directory,
       supportedLevels: <BDLevel>[BDLevel.error],
@@ -372,7 +372,7 @@ void main() {
       () {
     final FileLogHandler handler = FileLogHandler(
       logNamePrefix: 'cx4a',
-      maxLogSize: 1,
+      maxLogSizeInMb: 1,
       maxFilesCount: 5,
       logFileDirectory: directory,
       supportedLevels: <BDLevel>[BDLevel.error],
@@ -387,7 +387,7 @@ void main() {
     final Directory directory = _DirectoryMock();
     final FileLogHandler handler = FileLogHandler(
       logNamePrefix: 'cx4a',
-      maxLogSize: 1,
+      maxLogSizeInMb: 1,
       maxFilesCount: 5,
       logFileDirectory: directory,
       supportedLevels: <BDLevel>[BDLevel.error],

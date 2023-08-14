@@ -29,7 +29,7 @@ class ConsoleLogHandler extends BDLogHandler {
   /// Or reuse a already available instance.
   factory ConsoleLogHandler({
     BDLogFormatter logFormatter = const DefaultLogFormatter(),
-    List<BDLevel> supportedLevels = const <BDLevel>[BDLevel.debug],
+    List<BDLevel> supportedLevels = BDLevel.levels,
     LinePrinter? printer,
   }) {
     return ConsoleLogHandler.private(
@@ -143,6 +143,8 @@ class ConsoleLogHandler extends BDLogHandler {
       return ansi.yellow.wrap(line) ?? line;
     } else if (line.contains(BDLevel.error.name)) {
       return ansi.red.wrap(line) ?? line;
+    } else if (line.contains(BDLevel.success.name)) {
+      return ansi.green.wrap(line) ?? line;
     } else {
       return ansi.white.wrap(line) ?? line;
     }

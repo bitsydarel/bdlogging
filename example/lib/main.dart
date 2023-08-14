@@ -15,7 +15,7 @@ void main() {
     ..addHandler(
       FileLogHandler(
         logNamePrefix: 'example',
-        maxLogSize: 5,
+        maxLogSizeInMb: 5,
         maxFilesCount: 5,
         logFileDirectory: Directory.current,
         supportedLevels: <BDLevel>[BDLevel.error],
