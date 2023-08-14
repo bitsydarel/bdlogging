@@ -27,6 +27,7 @@ class FirebaseCrashlyticsLogHandler implements BDLogHandler {
         record,
         record.stackTrace,
         reason: record.message,
+        fatal: record.isFatal,
       );
     } else {
       final String recordFormatted = _formatter.format(record);
