@@ -19,3 +19,7 @@
 ## 0.1.2+2
 
 * Fixed record error where the error is not properly specified
+
+## 0.1.3
+
+* Added support for bdlogging 0.1.3.

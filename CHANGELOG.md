@@ -22,3 +22,7 @@
 ## 0.1.2
 
 * Expose the isFatal flag in the log methods.
+
+## 0.1.3
+
+* Updated log formatter for fatal exception.
