@@ -63,6 +63,7 @@ class BDLogger {
   void debug(
     final String message, {
     final dynamic error,
+    final bool? isFatal,
     final StackTrace? stackTrace,
     final String? tag,
   }) {
@@ -70,6 +71,7 @@ class BDLogger {
       BDLevel.debug,
       tag != null ? '$tag: $message' : message,
       error: error,
+      isFatal: isFatal,
       stackTrace: stackTrace,
     );
   }
@@ -84,12 +86,14 @@ class BDLogger {
     final String message, {
     final String? tag,
     final dynamic error,
+    final bool? isFatal,
     final StackTrace? stackTrace,
   }) {
     log(
       BDLevel.warning,
       tag != null ? '$tag: $message' : message,
       error: error,
+      isFatal: isFatal,
       stackTrace: stackTrace,
     );
   }
@@ -103,6 +107,7 @@ class BDLogger {
   void error(
     final String message,
     final Object error, {
+    final bool? isFatal,
     final StackTrace? stackTrace,
     final String? tag,
   }) {
@@ -111,6 +116,7 @@ class BDLogger {
       tag != null ? '$tag: $message' : message,
       error: error,
       stackTrace: stackTrace,
+      isFatal: isFatal,
     );
   }
 
@@ -130,12 +136,14 @@ class BDLogger {
     final String message, {
     final Object? error,
     final StackTrace? stackTrace,
+    final bool? isFatal,
   }) {
     final BDLogRecord record = BDLogRecord(
       level,
       message,
       error: error,
       stackTrace: stackTrace,
+      isFatal: isFatal ?? false,
     );
 
     _logRecordController.add(record);

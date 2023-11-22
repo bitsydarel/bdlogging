@@ -18,3 +18,7 @@
 ## 0.1.1
 
 * Updated package dependencies constraints.
+
+## 0.1.2
+
+* Expose the isFatal flag in the log methods.
