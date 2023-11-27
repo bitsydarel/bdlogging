@@ -17,6 +17,7 @@ export 'src/bd_log_record.dart';
 export 'src/formatters/default_log_formatter.dart';
 export 'src/handlers/console_log_handler.dart';
 export 'src/handlers/file_log_handler.dart';
+export 'src/handlers/isolate_file_log_handler.dart';
 
 /// [BDLogger] used to log messages.
 class BDLogger {

@@ -23,3 +23,7 @@
 ## 0.1.3
 
 * Added support for bdlogging 0.1.3.
+
+## 0.1.4
+
+* Added support for bdlogging 0.1.4

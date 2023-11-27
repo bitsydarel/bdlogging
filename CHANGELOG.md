@@ -26,3 +26,7 @@
 ## 0.1.3
 
 * Updated log formatter for fatal exception.
+
+## 0.1.4
+
+* Exported Isolate File Log Handler.
