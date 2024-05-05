@@ -85,7 +85,7 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
     _isolate = await Isolate.spawn(
       _startWorker,
       port.sendPort,
-      debugName: 'isolate_file_log_handler',
+      debugName: '${logNamePrefix.toLowerCase()}_isolate_file_log_handler',
     );
 
     final Completer<SendPort> sendPortCompleter = Completer<SendPort>();

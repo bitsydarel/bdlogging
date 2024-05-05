@@ -19,7 +19,7 @@ class DefaultLogFormatter extends BDLogFormatter {
     final StringBuffer buffer = StringBuffer()
       ..writeln()
       ..write(time)
-      ..write(' ${record.level.name}: ${record.isFatal ? 'FATAL ' : ''}')
+      ..write(' ${record.level.label}: ${record.isFatal ? 'FATAL ' : ''}')
       ..write('${record.message} ');
 
     if (record.error != null) {

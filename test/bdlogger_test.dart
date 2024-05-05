@@ -6,107 +6,317 @@ import 'package:test/test.dart';
 import 'test_log_handler.dart';
 
 void main() {
-  tearDown(
-    // destroy the singleton of BDLogging after each test.
-    // so that a new instance is created on each test.
-    BDLogger().destroy,
-  );
+  group('BDLogger', () {
+    tearDown(BDLogger().destroy);
 
-  test(
-    'only one instance of a logger can exist until destroy is call',
-    () async {
-      final BDLogger firstCallLogger = BDLogger();
-      final BDLogger secondCallLogger = BDLogger();
+    test('debug method should add a record to the queue', () {
+      BDLogger().debug('Debug message');
 
-      expect(firstCallLogger, same(secondCallLogger));
+      expect(BDLogger().recordQueue, isNotEmpty);
+      expect(BDLogger().recordQueue.first.message, 'Debug message');
+      expect(BDLogger().recordQueue.first.level, BDLevel.debug);
+    });
 
-      await firstCallLogger.destroy();
+    test('info method should add a record to the queue', () {
+      BDLogger().info('Info message');
 
-      final BDLogger newLogger = BDLogger();
+      expect(BDLogger().recordQueue, isNotEmpty);
+      expect(BDLogger().recordQueue.first.message, 'Info message');
+      expect(BDLogger().recordQueue.first.level, BDLevel.info);
+    });
 
-      expect(firstCallLogger, isNot(newLogger));
-      expect(secondCallLogger, isNot(newLogger));
-    },
-  );
+    test('warning method should add a record to the queue', () {
+      BDLogger().warning('Warning message');
 
-  test(
-    'should add a new handler when add handler is called',
-    () {
-      final BDLogger logger = BDLogger();
+      expect(BDLogger().recordQueue, isNotEmpty);
+      expect(BDLogger().recordQueue.first.message, 'Warning message');
+      expect(BDLogger().recordQueue.first.level, BDLevel.warning);
+    });
 
-      expect(logger.handlers, hasLength(0));
+    test('success method should add a record to the queue', () {
+      BDLogger().success('Success message');
 
-      final TestLogHandler logHandler = TestLogHandler();
+      expect(BDLogger().recordQueue, isNotEmpty);
+      expect(BDLogger().recordQueue.first.message, 'Success message');
+      expect(BDLogger().recordQueue.first.level, BDLevel.success);
+    });
 
-      logger.addHandler(logHandler);
+    test('error method should add a record to the queue', () {
+      BDLogger().error('Error message', Exception('Test exception'));
 
-      expect(logger.handlers, hasLength(1));
-    },
-  );
+      expect(BDLogger().recordQueue, isNotEmpty);
+      expect(BDLogger().recordQueue.first.message, 'Error message');
+      expect(BDLogger().recordQueue.first.level, BDLevel.error);
+    });
 
-  test(
-    'Should remove handler when remove handler is called',
-    () {
-      final BDLogger logger = BDLogger();
-      final TestLogHandler logHandler = TestLogHandler();
+    test('destroy method should clear the record queue', () async {
+      BDLogger().debug('Debug message');
 
-      logger.addHandler(logHandler);
+      expect(BDLogger().recordQueue, isNotEmpty);
 
-      expect(logger.handlers, hasLength(1));
+      await BDLogger().destroy();
 
-      logger.removeHandler(logHandler);
+      expect(BDLogger().recordQueue, isEmpty);
+    });
 
-      expect(logger.handlers, hasLength(0));
-    },
-  );
+    test('log method should add a record with correct level and message', () {
+      BDLogger().log(BDLevel.debug, 'Debug message');
 
-  test(
-    'should not allow Logger handlers to be modified outside of the Logger',
-    () {
-      final BDLogger logger = BDLogger();
-      final TestLogHandler testLogHandler = TestLogHandler();
+      expect(BDLogger().recordQueue, isNotEmpty);
+      expect(BDLogger().recordQueue.first.message, 'Debug message');
+      expect(BDLogger().recordQueue.first.level, BDLevel.debug);
+    });
 
-      logger.addHandler(testLogHandler);
+    test(
+      'log method should add a record with correct error and stack trace',
+      () {
+        final Exception error = Exception('Test exception');
+        final StackTrace stackTrace = StackTrace.current;
+        BDLogger().log(
+          BDLevel.error,
+          'Error message',
+          error: error,
+          stackTrace: stackTrace,
+        );
 
-      final List<BDLogHandler> handlers = logger.handlers;
+        expect(BDLogger().recordQueue, isNotEmpty);
+        expect(BDLogger().recordQueue.first.error, error);
+        expect(BDLogger().recordQueue.first.stackTrace, stackTrace);
+      },
+    );
 
-      expect(handlers.clear, throwsA(const TypeMatcher<Error>()));
-    },
-  );
+    test('addHandler method should not add the same handler twice', () {
+      final TestLogHandler handler = TestLogHandler();
+      BDLogger().addHandler(handler);
+      BDLogger().addHandler(handler);
 
-  test(
-    'should forward log record event to each handlers',
-    () async {
-      final StreamController<BDLogRecord> streamController =
-          StreamController<BDLogRecord>.broadcast();
+      expect(BDLogger().handlers, hasLength(1));
+    });
 
-      final TestLogHandler firstHandler = TestLogHandler();
-      final TestLogHandler secondHandler = TestLogHandler();
+    test('removeHandler method should not affect other handlers', () {
+      final TestLogHandler handler1 = TestLogHandler();
+      final TestLogHandler handler2 = TestLogHandler();
+      BDLogger().addHandler(handler1);
+      BDLogger().addHandler(handler2);
+      BDLogger().removeHandler(handler1);
 
-      final BDLogger logger = BDLogger.private(
-        'TestLogger',
-        <BDLogHandler>[firstHandler, secondHandler],
-        streamController,
-      );
+      expect(BDLogger().handlers, hasLength(1));
+      expect(BDLogger().handlers.first, handler2);
+    });
 
-      expect(firstHandler.howManyTimeHandleWasCall, equals(0));
-      expect(secondHandler.howManyTimeHandleWasCall, equals(0));
+    test(
+      'destroy method should call clean method on cleanable handlers',
+      () async {
+        final CleanableTestLogHandler handler = CleanableTestLogHandler();
+        BDLogger().addHandler(handler);
+        await BDLogger().destroy();
 
-      logger.info(
-        'he he he man the test should pass :)',
-      );
+        expect(handler.cleanCalled, isTrue);
+      },
+    );
 
-      await streamController.close();
+    test(
+      'only one instance of a logger can exist until destroy is call',
+      () async {
+        final BDLogger firstCallLogger = BDLogger();
+        final BDLogger secondCallLogger = BDLogger();
 
-      expect(
-        firstHandler.howManyTimeHandleWasCall,
-        equals(1),
-      );
+        expect(firstCallLogger, same(secondCallLogger));
 
-      expect(
-        secondHandler.howManyTimeHandleWasCall,
-        equals(1),
-      );
-    },
-  );
+        await firstCallLogger.destroy();
+
+        final BDLogger newLogger = BDLogger();
+
+        expect(firstCallLogger, isNot(newLogger));
+        expect(secondCallLogger, isNot(newLogger));
+      },
+    );
+
+    test(
+      'should add a new handler when add handler is called',
+      () {
+        final BDLogger logger = BDLogger();
+
+        expect(logger.handlers, hasLength(0));
+
+        final TestLogHandler logHandler = TestLogHandler();
+
+        logger.addHandler(logHandler);
+
+        expect(logger.handlers, hasLength(1));
+      },
+    );
+
+    test(
+      'Should remove handler when remove handler is called',
+      () {
+        final BDLogger logger = BDLogger();
+        final TestLogHandler logHandler = TestLogHandler();
+
+        logger.addHandler(logHandler);
+
+        expect(logger.handlers, hasLength(1));
+
+        logger.removeHandler(logHandler);
+
+        expect(logger.handlers, hasLength(0));
+      },
+    );
+
+    test(
+      'should not allow Logger handlers to be modified outside of the Logger',
+      () {
+        final BDLogger logger = BDLogger();
+        final TestLogHandler testLogHandler = TestLogHandler();
+
+        logger.addHandler(testLogHandler);
+
+        final List<BDLogHandler> handlers = logger.handlers;
+
+        expect(handlers.clear, throwsA(const TypeMatcher<Error>()));
+      },
+    );
+
+    test(
+      'should forward log record event to each handlers',
+      () async {
+        final TestLogHandler firstHandler = TestLogHandler();
+        final TestLogHandler secondHandler = TestLogHandler();
+
+        final BDLogger logger = BDLogger.private(
+          <BDLogHandler>{firstHandler, secondHandler},
+          StreamController<BDLogError>.broadcast(),
+        );
+
+        expect(firstHandler.howManyTimeHandleWasCall, equals(0));
+        expect(secondHandler.howManyTimeHandleWasCall, equals(0));
+
+        logger.info('he he he man the test should pass :)');
+
+        while (logger.recordQueue.isNotEmpty) {
+          await Future<void>.delayed(BDLogger.defaultProcessingInterval);
+        }
+
+        expect(firstHandler.howManyTimeHandleWasCall, equals(1));
+
+        expect(secondHandler.howManyTimeHandleWasCall, equals(1));
+      },
+    );
+
+    test(
+      'processingInterval should control the frequency of log processing',
+      () async {
+        final BDLogger logger = BDLogger();
+        final TestLogHandler handler = TestLogHandler();
+        logger
+          ..addHandler(handler)
+          ..processingInterval = const Duration(milliseconds: 500)
+          ..debug('Debug message');
+
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        expect(handler.howManyTimeHandleWasCall, equals(0));
+
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        expect(handler.howManyTimeHandleWasCall, equals(1));
+
+        logger.destroy();
+      },
+    );
+
+    test(
+      'processingBatchSize should control '
+      'the number of logs processed at a time',
+      () async {
+        final BDLogger logger = BDLogger();
+        final TestLogHandler handler = TestLogHandler();
+
+        logger
+          ..addHandler(handler)
+          ..processingBatchSize = 2
+          ..debug('Debug message 1')
+          ..debug('Debug message 2')
+          ..debug('Debug message 3');
+
+        await Future<void>.delayed(logger.processingInterval);
+        expect(handler.howManyTimeHandleWasCall, equals(2));
+
+        await Future<void>.delayed(logger.processingInterval);
+        expect(handler.howManyTimeHandleWasCall, equals(3));
+
+        logger.destroy();
+      },
+    );
+
+    test(
+      'log processing should stop after destroy is called',
+      () async {
+        final BDLogger logger = BDLogger();
+        final TestLogHandler handler = TestLogHandler();
+        logger
+          ..addHandler(handler)
+          ..debug('Debug message 1');
+
+        await logger.destroy();
+        logger.debug('Debug message 2');
+
+        await Future<void>.delayed(logger.processingInterval);
+        expect(handler.howManyTimeHandleWasCall, equals(1));
+
+        logger.destroy();
+      },
+    );
+
+    test(
+      'BDLogger should measure the time it took to process all log events',
+      () async {
+        final BDLogger logger = BDLogger();
+        final TestLogHandler handler = TestLogHandler();
+        logger.addHandler(handler);
+
+        const int numberOfLogs = 10000;
+
+        for (int i = 0; i < numberOfLogs; i++) {
+          logger.debug('Debug message $i');
+        }
+
+        final Stopwatch stopwatch = Stopwatch()..start();
+
+        // Wait for all logs to be processed
+        final Completer<void> completer = Completer<void>();
+        Timer.periodic(logger.processingInterval, (Timer timer) {
+          if (logger.recordQueue.isEmpty) {
+            timer.cancel();
+            completer.complete();
+          }
+        });
+
+        await completer.future;
+        stopwatch.stop();
+
+        final Duration processingTime = stopwatch.elapsed;
+
+        if (processingTime.inHours > 0) {
+          Zone.current.print(
+            'Total processing time: ${processingTime.inHours} hours',
+          );
+        } else if (processingTime.inMinutes > 0) {
+          Zone.current.print(
+            'Total processing time: ${processingTime.inMinutes} minutes',
+          );
+        } else if (processingTime.inSeconds > 0) {
+          Zone.current.print(
+            'Total processing time: ${processingTime.inSeconds} seconds',
+          );
+        } else {
+          Zone.current.print(
+            'Total processing time: ${processingTime.inMilliseconds} ms',
+          );
+        }
+
+        expect(handler.howManyTimeHandleWasCall, equals(numberOfLogs));
+
+        logger.destroy();
+      },
+    );
+  });
 }

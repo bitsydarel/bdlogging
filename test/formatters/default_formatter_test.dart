@@ -34,7 +34,7 @@ void main() {
       final String formattedLog = formatter.format(record);
 
       final bool result =
-          isOrdered(formattedLog, record.time.toString(), record.level.name);
+          isOrdered(formattedLog, record.time.toString(), record.level.label);
 
       expect(result, true);
     });
@@ -46,7 +46,7 @@ void main() {
       final String formattedLog = formatter.format(record);
 
       final bool result =
-          isOrdered(formattedLog, record.level.name, record.message);
+          isOrdered(formattedLog, record.level.label, record.message);
 
       expect(result, true);
     });

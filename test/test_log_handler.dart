@@ -1,6 +1,4 @@
-import 'package:bdlogging/src/bd_level.dart';
-import 'package:bdlogging/src/bd_log_handler.dart';
-import 'package:bdlogging/src/bd_log_record.dart';
+import 'package:bdlogging/bdlogging.dart';
 
 class TestLogHandler extends BDLogHandler {
   int howManyTimeHandleWasCall = 0;
@@ -34,4 +32,22 @@ class FailFastTestHandler extends BDLogHandler {
   static void _crash() {
     throw Exception('failed to process');
   }
+}
+
+class CleanableTestLogHandler extends BDCleanableLogHandler {
+  bool cleanCalled = false;
+  int howManyTimeHandleWasCall = 0;
+
+  @override
+  Future<void> handleRecord(BDLogRecord record) async {
+    howManyTimeHandleWasCall++;
+  }
+
+  @override
+  Future<void> clean() async {
+    cleanCalled = true;
+  }
+
+  @override
+  bool supportLevel(BDLevel level) => true;
 }

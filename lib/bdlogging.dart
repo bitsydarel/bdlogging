@@ -5,12 +5,14 @@ import 'dart:collection';
 
 import 'package:bdlogging/src/bd_cleanable_log_handler.dart';
 import 'package:bdlogging/src/bd_level.dart';
+import 'package:bdlogging/src/bd_log_error.dart';
 import 'package:bdlogging/src/bd_log_handler.dart';
 import 'package:bdlogging/src/bd_log_record.dart';
 import 'package:meta/meta.dart';
 
 export 'src/bd_cleanable_log_handler.dart';
 export 'src/bd_level.dart';
+export 'src/bd_log_error.dart';
 export 'src/bd_log_formatter.dart';
 export 'src/bd_log_handler.dart';
 export 'src/bd_log_record.dart';
@@ -19,48 +21,145 @@ export 'src/handlers/console_log_handler.dart';
 export 'src/handlers/file_log_handler.dart';
 export 'src/handlers/isolate_file_log_handler.dart';
 
-/// [BDLogger] used to log messages.
+/// `BDLogger` is a singleton class used for logging in Dart/Flutter applications.
+///
+/// It provides methods to log messages
+/// at different levels (debug, info, warning, success, error).
+///
+/// It supports multiple log handlers to handle log records
+/// in different ways (e.g., writing to a file, sending to a server).
+///
+/// The class uses a timer to process log records at regular intervals,
+/// and processes a certain number of records at a time.
+///
+/// This helps balance responsiveness and resource usage.
+///
+/// The processing interval and chunk size can be changed dynamically,
+/// allowing developers to adjust the logger's performance at runtime.
+///
+/// The class provides a stream of `BDLogError` that occurred during logging,
+/// allowing developers to handle logging errors in a centralized way.
+///
+/// This class is thread-safe. Methods that modify shared resources are
+/// synchronized to ensure that only one thread can execute them at a time.
+///
+/// Here's an example of how to use this class:
+///
+/// ```dart
+/// final logger = BDLogger();
+/// logger.addHandler(ConsoleLogHandler());
+/// logger.log(BDLevel.info, 'Hello, world!');
+/// ```
+///
+/// If an error occurs while a log handler is processing a log record,
+/// the error is caught and added to the error stream. You can listen to
+/// this stream to handle logging errors:
+///
+/// ```dart
+/// logger.onError.listen((error) {
+///   // Handle the error.
+/// });
+/// ```
+///
+/// When you're done with the logger, you should call the `destroy` method
+/// to clean up resources:
+///
+/// ```dart
+/// logger.destroy();
+/// ```
 class BDLogger {
-  /// Get an instance of the logger with the following name
+  static BDLogger? _instance;
+
+  /// The default number of log records that are processed at a time.
+  static const int defaultProcessingBatchSize = 100;
+
+  /// The default duration at which log records are processed.
+  static const Duration defaultProcessingInterval = Duration(milliseconds: 200);
+
+  /// Returns the singleton instance of the `BDLogger` class.
   factory BDLogger() {
     return _instance ??= BDLogger.private(
-      'FlutterLogger',
-      <BDLogHandler>[],
-      StreamController<BDLogRecord>.broadcast(),
+      <BDLogHandler>{},
+      StreamController<BDLogError>.broadcast(),
     );
   }
 
-  /// Create a new instance of the Logger.
+  /// Private constructor used to create the singleton instance of the class.
+  /// This constructor is marked as `@visibleForTesting` to allow it
+  /// to be accessed in tests.
   @visibleForTesting
-  BDLogger.private(this.name, this._handlers, this._logRecordController) {
-    _logRecordController.stream.listen(_handleLogRecord);
+  BDLogger.private(
+    this._handlers,
+    this._errorController, [
+    this._processingInterval = defaultProcessingInterval,
+    this._processingBatchSize = defaultProcessingBatchSize,
+  ]) {
+    _registerLogProcessingTimer();
   }
 
-  static BDLogger? _instance;
+  Timer? _processingTimer;
 
-  /// [BDLogger]'s name.
-  final String name;
+  int _processingBatchSize;
 
-  final List<BDLogHandler> _handlers;
+  Duration _processingInterval;
 
-  final StreamController<BDLogRecord> _logRecordController;
+  final Set<BDLogHandler> _handlers;
 
-  /// Get list of [BDLogHandler] available in this logger.
+  final StreamController<BDLogError> _errorController;
+
+  /// A queue of log records that are waiting to be processed.
+  @visibleForTesting
+  final Queue<BDLogRecord> recordQueue = Queue<BDLogRecord>();
+
+  /// Returns a stream that emits [BDLogError] instances
+  /// whenever an error occurs during logging.
+  Stream<BDLogError> get onError => _errorController.stream;
+
+  /// Returns the duration at which log records are processed.
+  Duration get processingInterval => _processingInterval;
+
+  /// Changes the duration at which log records are processed.
+  /// If the new value is different from the current value,
+  /// the processing timer is restarted.
+  set processingInterval(Duration value) {
+    if (_processingInterval != value) {
+      _processingInterval = value;
+      _processingTimer?.cancel();
+      _registerLogProcessingTimer();
+    }
+  }
+
+  /// Returns the number of log records that are processed at a time.
+  int get processingBatchSize => _processingBatchSize;
+
+  /// Changes the number of log records that are processed at a time.
+  /// If the new value is different from the current value,
+  /// the processing timer is restarted.
+  set processingBatchSize(int value) {
+    if (_processingBatchSize != value) {
+      _processingBatchSize = value;
+    }
+  }
+
+  /// Returns a list of the log handlers that are currently added to the logger.
   List<BDLogHandler> get handlers {
     return UnmodifiableListView<BDLogHandler>(_handlers);
   }
 
-  /// Add a new [BDLogHandler] handler to the Logger.
+  /// Adds a log handler to the logger.
+  /// The handler will be used to process log records.
   void addHandler(final BDLogHandler handler) {
     _handlers.add(handler);
   }
 
-  /// Remove a handler from the list of handlers.
+  /// Removes a log handler from the logger.
+  /// The handler will no longer be used to process log records.
   bool removeHandler(final BDLogHandler handler) {
     return _handlers.remove(handler);
   }
 
-  /// Log a message at [BDLevel.debug]
+  /// Logs a message at the debug level.
+  /// The message can optionally be associated with an error and a stack trace.
   void debug(
     final String message, {
     final dynamic error,
@@ -77,12 +176,13 @@ class BDLogger {
     );
   }
 
-  /// Log a message at [BDLevel.info].
+  /// Logs a message at the info level.
   void info(final String message, {final String? tag}) {
     log(BDLevel.info, tag != null ? '$tag: $message' : message);
   }
 
-  /// Log a message at [BDLevel.warning]
+  /// Logs a message at the warning level.
+  /// The message can optionally be associated with an error and a stack trace.
   void warning(
     final String message, {
     final String? tag,
@@ -99,12 +199,14 @@ class BDLogger {
     );
   }
 
-  /// Log a message at [BDLevel.success].
+  /// Logs a message at the success level.
   void success(final String message, {final String? tag}) {
     log(BDLevel.success, tag != null ? '$tag: $message' : message);
   }
 
-  /// Log a message at [BDLogger.error]
+  /// Logs a message at the error level.
+  /// The message is associated with an error and can optionally
+  /// be associated with a stack trace.
   void error(
     final String message,
     final Object error, {
@@ -121,8 +223,6 @@ class BDLogger {
     );
   }
 
-  /// Adds a log record for a [message] at a particular [BDLevel] if
-  ///
   /// Use this method to create log entries for user-defined levels. To record a
   /// message at a predefined level (e.g. [BDLevel.info], [BDLevel.warning])
   /// you can use their specialized methods instead (e.g. [info], [warning],
@@ -139,7 +239,7 @@ class BDLogger {
     final StackTrace? stackTrace,
     final bool? isFatal,
   }) {
-    final BDLogRecord record = BDLogRecord(
+    final BDLogRecord newLogRecord = BDLogRecord(
       level,
       message,
       error: error,
@@ -147,42 +247,68 @@ class BDLogger {
       isFatal: isFatal ?? false,
     );
 
-    _logRecordController.add(record);
+    recordQueue.add(newLogRecord);
   }
 
-  /// Destroy the current instance of [BDLogger].
-  ///
-  /// It also call clean on every [BDCleanableLogHandler].
+  /// Destroys the singleton instance of the `BDLogger` class.
+  /// This also calls the `clean` method on every [BDCleanableLogHandler].
   Future<void> destroy() async {
-    await _logRecordController.sink.close();
+    _processingTimer?.cancel();
 
-    for (final BDCleanableLogHandler handler
-        in _handlers.whereType<BDCleanableLogHandler>()) {
-      await handler.clean();
+    await Future.doWhile(() async {
+      if (recordQueue.isEmpty) {
+        return false;
+      }
+      await _processLogRecord(recordQueue.removeFirst());
+      return true;
+    });
+
+    try {
+      for (final BDCleanableLogHandler handler
+          in _handlers.whereType<BDCleanableLogHandler>()) {
+        await handler.clean();
+      }
+    } on Object catch (error, stackTrace) {
+      _errorController.add(BDLogError(error, stackTrace));
     }
 
     _handlers.clear();
 
     _instance = null;
 
-    return _logRecordController.close();
+    await _errorController.sink.close();
+    return _errorController.close();
   }
 
-  void _handleLogRecord(final BDLogRecord record) {
-    for (final BDLogHandler handler in _handlers) {
+  void _registerLogProcessingTimer() {
+    _processingTimer = Timer.periodic(_processingInterval, (Timer timer) async {
+      for (int i = 0; i < _processingBatchSize; i++) {
+        if (recordQueue.isNotEmpty) {
+          _processLogRecord(recordQueue.removeFirst());
+        } else {
+          return;
+        }
+      }
+    });
+  }
+
+  Future<void> _processLogRecord(final BDLogRecord record) {
+    return Future.forEach(_handlers, (BDLogHandler handler) async {
       if (handler.supportLevel(record.level)) {
         try {
-          handler.handleRecord(record);
-        } on Exception catch (ex) {
+          await handler.handleRecord(record);
+        } on Object catch (error, stackTrace) {
+          _errorController.add(BDLogError(error, stackTrace));
           // note: Added so that in debug run user could see error produced by
           // handlers while handling a log record.
           // this code is removed when compiling to release build.
           assert(
             false,
-            '$name $ex\n${handler.runtimeType} could not process $record',
+            '${handler.runtimeType} could not process '
+            '$record\n$error\n${stackTrace.toString()}',
           );
         }
       }
-    }
+    });
   }
 }

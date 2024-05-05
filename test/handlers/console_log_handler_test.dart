@@ -1,4 +1,4 @@
-import 'dart:collection';
+import 'dart:async';
 
 import 'package:bdlogging/src/bd_level.dart';
 import 'package:bdlogging/src/bd_log_record.dart';
@@ -43,10 +43,11 @@ void main() {
         final String ansiMarkerStart = getAnsiMarkerStart(ansi.blue.code);
 
         ansi.overrideAnsiOutput<void>(true, () {
-          final String coloredLog = handler.colorLine(log);
+          final String coloredLog = handler.colorLine(BDLevel.debug, log);
 
           expect(coloredLog, startsWith(ansiMarkerStart));
           expect(coloredLog, endsWith(ansiMarkerEnd));
+          Zone.current.print(coloredLog);
         });
       });
 
@@ -57,10 +58,11 @@ void main() {
         final String ansiMarkerStart = getAnsiMarkerStart(ansi.yellow.code);
 
         ansi.overrideAnsiOutput<void>(true, () {
-          final String coloredLog = handler.colorLine(log);
+          final String coloredLog = handler.colorLine(BDLevel.warning, log);
 
           expect(coloredLog, startsWith(ansiMarkerStart));
           expect(coloredLog, endsWith(ansiMarkerEnd));
+          Zone.current.print(coloredLog);
         });
       });
 
@@ -71,10 +73,11 @@ void main() {
         final String ansiMarkerStart = getAnsiMarkerStart(ansi.red.code);
 
         ansi.overrideAnsiOutput<void>(true, () {
-          final String coloredLog = handler.colorLine(log);
+          final String coloredLog = handler.colorLine(BDLevel.error, log);
 
           expect(coloredLog, startsWith(ansiMarkerStart));
           expect(coloredLog, endsWith(ansiMarkerEnd));
+          Zone.current.print(coloredLog);
         });
       });
 
@@ -85,10 +88,11 @@ void main() {
         final String ansiMarkerStart = getAnsiMarkerStart(ansi.white.code);
 
         ansi.overrideAnsiOutput<void>(true, () {
-          final String coloredLog = handler.colorLine(log);
+          final String coloredLog = handler.colorLine(BDLevel.info, log);
 
           expect(coloredLog, startsWith(ansiMarkerStart));
           expect(coloredLog, endsWith(ansiMarkerEnd));
+          Zone.current.print(coloredLog);
         });
       });
 
@@ -99,238 +103,13 @@ void main() {
         final String ansiMarkerStart = getAnsiMarkerStart(ansi.green.code);
 
         ansi.overrideAnsiOutput<void>(true, () {
-          final String coloredLog = handler.colorLine(log);
+          final String coloredLog = handler.colorLine(BDLevel.success, log);
 
           expect(coloredLog, startsWith(ansiMarkerStart));
           expect(coloredLog, endsWith(ansiMarkerEnd));
+          Zone.current.print(coloredLog);
         });
       });
-    },
-  );
-
-  group(
-    'throttleLogPrint',
-    () {
-      test(
-        'should print only if print pause watcher has exceeded maxPrintPause',
-        () {
-          final Queue<String> logBuffer = Queue<String>()
-            ..add(
-              '2021-06-09 14:40:24.863623 DEBUG: '
-              'Days until death 10 at logged 2021-06-09 14:40:24.859826',
-            );
-
-          final _MockPauseWatcher printPauseWatcher = _MockPauseWatcher();
-
-          final ConsoleLogHandler handler = ConsoleLogHandler.private(
-            <BDLevel>[BDLevel.info],
-            const DefaultLogFormatter(),
-            logBuffer,
-            printPauseWatcher,
-            (Duration _, void Function() __) {},
-            print,
-          );
-
-          mockito
-              .when(() => printPauseWatcher.elapsed)
-              .thenReturn(ConsoleLogHandler.maxPrintPause + friction);
-
-          handler.throttleLogPrint();
-
-          expect(logBuffer, isEmpty);
-        },
-      );
-
-      test(
-        'should not print more than allowed by maxPrintCapacity',
-        () {
-          final Queue<String> logBuffer = Queue<String>();
-
-          const String log = '2021-06-09 14:40:24.863623 DEBUG: '
-              'Days until death 10 at logged 2021-06-09 14:40:24.859826';
-
-          while (logBuffer.length <= ConsoleLogHandler.maxPrintCapacity) {
-            logBuffer.add(log);
-          }
-
-          expect(
-            logBuffer.length,
-            greaterThan(ConsoleLogHandler.maxPrintCapacity),
-          );
-
-          final _MockPauseWatcher printPauseWatcher = _MockPauseWatcher();
-
-          final ConsoleLogHandler handler = ConsoleLogHandler.private(
-            <BDLevel>[BDLevel.info],
-            const DefaultLogFormatter(),
-            logBuffer,
-            printPauseWatcher,
-            (Duration _, void Function() __) {},
-            print,
-          );
-
-          mockito
-              .when(() => printPauseWatcher.elapsed)
-              .thenReturn(ConsoleLogHandler.maxPrintPause + friction);
-
-          handler.throttleLogPrint();
-
-          expect(logBuffer, isNotEmpty);
-          expect(
-            logBuffer.length,
-            lessThan(ConsoleLogHandler.maxPrintCapacity),
-          );
-        },
-      );
-
-      test(
-        'should be rescheduled if after log printing, log buffer is not empty',
-        () {
-          final Queue<String> logBuffer = Queue<String>();
-
-          const String log = '2021-06-09 14:40:24.863623 DEBUG: '
-              'Days until death 10 at logged 2021-06-09 14:40:24.859826';
-
-          while (logBuffer.length <= ConsoleLogHandler.maxPrintCapacity) {
-            logBuffer.add(log);
-          }
-
-          expect(
-            logBuffer.length,
-            greaterThan(ConsoleLogHandler.maxPrintCapacity),
-          );
-
-          final _MockPauseWatcher printPauseWatcher = _MockPauseWatcher();
-          final _MockRescheduleCallback rescheduleCallback =
-              _MockRescheduleCallback();
-
-          final ConsoleLogHandler handler = ConsoleLogHandler.private(
-            <BDLevel>[BDLevel.info],
-            const DefaultLogFormatter(),
-            logBuffer,
-            printPauseWatcher,
-            rescheduleCallback,
-            print,
-          );
-
-          mockito
-              .when(() => printPauseWatcher.elapsed)
-              .thenReturn(ConsoleLogHandler.maxPrintPause + friction);
-
-          handler.throttleLogPrint();
-
-          expect(logBuffer, isNotEmpty);
-          expect(
-              logBuffer.length, lessThan(ConsoleLogHandler.maxPrintCapacity));
-
-          mockito
-              .verify(
-                () => rescheduleCallback.call(
-                  ConsoleLogHandler.maxPrintPause,
-                  mockito.any(),
-                ),
-              )
-              .called(1);
-
-          mockito.verifyNoMoreInteractions(rescheduleCallback);
-        },
-      );
-
-      test(
-        'should reschedule printing to the remaining duration if '
-        'elapsed print pause is not greater than maxPrintPause',
-        () {
-          final _MockPauseWatcher printPauseWatcher = _MockPauseWatcher();
-          final _MockRescheduleCallback rescheduleCallback =
-              _MockRescheduleCallback();
-
-          final ConsoleLogHandler handler = ConsoleLogHandler.private(
-            <BDLevel>[BDLevel.info],
-            const DefaultLogFormatter(),
-            Queue<String>(),
-            printPauseWatcher,
-            rescheduleCallback,
-            print,
-          );
-
-          mockito
-              .when(() => printPauseWatcher.elapsed)
-              .thenReturn(ConsoleLogHandler.maxPrintPause - friction);
-
-          handler.throttleLogPrint();
-
-          mockito
-              .verify(
-                () => rescheduleCallback.call(friction, mockito.any()),
-              )
-              .called(1);
-
-          mockito.verifyNoMoreInteractions(rescheduleCallback);
-        },
-      );
-
-      test(
-        'should stop and reset printPauseWatcher when printing is starting',
-        () {
-          final _MockPauseWatcher printPauseWatcher = _MockPauseWatcher();
-
-          final ConsoleLogHandler handler = ConsoleLogHandler.private(
-            <BDLevel>[BDLevel.info],
-            const DefaultLogFormatter(),
-            Queue<String>(),
-            printPauseWatcher,
-            (Duration duration, void Function() _) {},
-            print,
-          );
-
-          mockito
-              .when(() => printPauseWatcher.elapsed)
-              .thenReturn(ConsoleLogHandler.maxPrintPause + friction);
-
-          handler.throttleLogPrint();
-
-          mockito.verifyInOrder<void>(
-            <void Function()>[
-              printPauseWatcher.stop,
-              printPauseWatcher.reset,
-            ],
-          );
-        },
-      );
-
-      test(
-        'should start printPauseWatcher when printing is done',
-        () {
-          final _MockPauseWatcher printPauseWatcher = _MockPauseWatcher();
-
-          final Queue<String> logBuffer = Queue<String>()
-            ..add(
-              '2021-06-09 14:40:24.863623 DEBUG: '
-              'Days until death 10 at logged 2021-06-09 14:40:24.859826',
-            );
-
-          final ConsoleLogHandler handler = ConsoleLogHandler.private(
-            <BDLevel>[BDLevel.info],
-            const DefaultLogFormatter(),
-            logBuffer,
-            printPauseWatcher,
-            (Duration duration, void Function() _) {},
-            print,
-          );
-
-          mockito
-              .when(() => printPauseWatcher.elapsed)
-              .thenReturn(ConsoleLogHandler.maxPrintPause + friction);
-
-          expect(logBuffer, isNotEmpty);
-
-          handler.throttleLogPrint();
-
-          expect(logBuffer, isEmpty);
-
-          mockito.verify(printPauseWatcher.start).called(1);
-        },
-      );
     },
   );
 
@@ -342,53 +121,24 @@ void main() {
 
     test('should format log with formatter', () {
       final DefaultLogFormatter formatter = _MockFormatter();
-      final Queue<String> logBuffer = Queue<String>();
-      final _MockPauseWatcher printPauseWatcher = _MockPauseWatcher();
+      final List<String> receivedLines = <String>[];
 
       final ConsoleLogHandler handler = ConsoleLogHandler.private(
         <BDLevel>[BDLevel.info],
         formatter,
-        logBuffer,
-        printPauseWatcher,
-        (Duration duration, void Function() _) {},
-        print,
+        (String line) {
+          receivedLines.add(line);
+          Zone.current.print(line);
+        },
       );
 
       mockito.when(() => formatter.format(record)).thenReturn(record.message);
-
-      mockito
-          .when(() => printPauseWatcher.elapsed)
-          .thenReturn(ConsoleLogHandler.maxPrintPause + friction);
 
       handler.handleRecord(record);
 
       mockito.verify(() => formatter.format(record)).called(1);
     });
-
-    test(
-        'should remove last log from logBuffer by calling '
-        'throttleLogPrint', () async {
-      final Queue<String> _logBuffer = Queue<String>();
-      final ConsoleLogHandler handler = ConsoleLogHandler.private(
-        <BDLevel>[BDLevel.info],
-        const DefaultLogFormatter(),
-        _logBuffer,
-        Stopwatch(),
-        (Duration duration, void Function() _) {},
-        print,
-      );
-
-      await handler.handleRecord(BDLogRecord(BDLevel.debug, 'abc'));
-
-      expect(_logBuffer.last, isNot(equals('abc')));
-    });
   });
 }
-
-class _MockRescheduleCallback extends mockito.Mock {
-  void call(Duration duration, void Function() callback);
-}
-
-class _MockPauseWatcher extends mockito.Mock implements Stopwatch {}
 
 class _MockFormatter extends mockito.Mock implements DefaultLogFormatter {}

@@ -7,7 +7,7 @@ void main() {
   final BDLogger logger = BDLogger()
     ..addHandler(
       ConsoleLogHandler(
-        supportedLevels: BDLevel.levels
+        supportedLevels: BDLevel.values
             .where((BDLevel level) => level != BDLevel.error)
             .toList(),
       ),

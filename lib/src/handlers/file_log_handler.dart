@@ -9,8 +9,40 @@ import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as path;
 
-/// A implementation of [BDCleanableLogHandler]
-/// that write [BDLogRecord] to files.
+/// `FileLogHandler` is a class that extends `BDCleanableLogHandler`.
+/// It is designed to handle logging records
+/// [BDLogRecord] by writing them to files.
+///
+/// The class is initialized with several parameters,
+/// including [logNamePrefix], [maxLogSizeInMb],
+/// [maxFilesCount], [logFileDirectory], [supportedLevels], and [logFormatter].
+/// These parameters are used to control the behavior of the log handler.
+///
+/// The [handleRecord] method is used to write
+/// a [BDLogRecord] to the current log file.
+///
+/// If the current log file exceeds the maximum size [maxLogSizeInMb],
+/// it closes the current log file and creates a new one.
+///
+/// The `onFileExceededMaxSize` method is called when
+/// the current log file exceeds the maximum size.
+///
+/// It flushes and closes the current file, increments the
+/// current log file index, and updates the current log file.
+///
+/// The [removeOldLogFilesIfRequired] method is used to remove old log files if
+/// the current count of log files exceeds
+/// the maximum files count [maxFilesCount].
+///
+/// The [initializeFileSink] method is used to create a
+/// new log file in the specified directory (`logDir`).
+///
+/// The [updateCurrentLogFile] method is used to update
+/// the current log file with a newly created one.
+///
+/// The [getLogFileIndex] and [getLatestLogFileIndex] methods
+/// are used to get the index of a log file
+/// and the latest log file index, respectively.
 class FileLogHandler extends BDCleanableLogHandler {
   /// Create a new instance of [FileLogHandler].
   ///

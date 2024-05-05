@@ -1,58 +1,35 @@
-import 'package:meta/meta.dart';
-
 /// An Logging Level of importance of a log message.
-@immutable
-class BDLevel implements Comparable<BDLevel> {
-  /// Create a new level with [name] and [importance].
-  const BDLevel(this.name, this.importance);
+enum BDLevel implements Comparable<BDLevel> {
+  /// DEBUG logging level for debugging messages.
+  debug('DEBUG', 3),
+
+  /// INFO logging level for informational messages.
+  info('INFO', 4),
+
+  /// WARNING logging level for potential problems.
+  warning('WARNING', 5),
+
+  /// SUCCESS logging level for positive messages.
+  success('SUCCESS', 6),
+
+  /// ERROR logging level for server problems
+  error('ERROR', 7);
+
+  /// Create a new level with [label] and [importance].
+  const BDLevel(this.label, this.importance);
 
   /// Name of the logging level.
-  final String name;
+  final String label;
 
   /// The value of the logging level, that allow it be ordered by importance
   /// or to remove logging level lower or higher to the logging level.
   final int importance;
 
-  /// DEBUG logging level for debugging messages
-  static const BDLevel debug = BDLevel('DEBUG', 3);
-
-  /// INFO logging level for informational messages
-  static const BDLevel info = BDLevel('INFO', 4);
-
-  /// WARNING logging level for potential problems
-  static const BDLevel warning = BDLevel('WARNING', 5);
-
-  /// ERROR logging level for server problems
-  static const BDLevel success = BDLevel('SUCCESS', 6);
-
-  /// ERROR logging level for server problems
-  static const BDLevel error = BDLevel('ERROR', 7);
-
-  /// List of all the levels currently supported [BDLevel].
-  static const List<BDLevel> levels = <BDLevel>[
-    debug,
-    info,
-    warning,
-    success,
-    error
-  ];
+  @override
+  int compareTo(BDLevel other) => importance.compareTo(other.importance);
 
   @override
-  int compareTo(BDLevel other) => importance - other.importance;
-
-  @override
-  String toString() => 'Level{name: $name, importance: $importance}';
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is BDLevel &&
-          runtimeType == other.runtimeType &&
-          name == other.name &&
-          importance == other.importance;
-
-  @override
-  int get hashCode => name.hashCode ^ importance.hashCode;
+  String toString() => 'BDLevel{label: $label, importance: $importance}';
 
   /// Compare if the current [BDLevel] is greater than [other]
   bool operator >(BDLevel other) => importance > other.importance;
