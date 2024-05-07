@@ -1,3 +1,8 @@
+## 1.1.0
+
+* Changed the processing of logs, to fix logs getting lost
+* Removed processing interval interface.
+
 ## 1.0.0
 
 * Updated the package to support dart 3.0.0.

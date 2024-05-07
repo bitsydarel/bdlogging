@@ -2,6 +2,7 @@ library bdlogging;
 
 import 'dart:async';
 import 'dart:collection';
+import 'dart:math';
 
 import 'package:bdlogging/src/bd_cleanable_log_handler.dart';
 import 'package:bdlogging/src/bd_level.dart';
@@ -29,19 +30,11 @@ export 'src/handlers/isolate_file_log_handler.dart';
 /// It supports multiple log handlers to handle log records
 /// in different ways (e.g., writing to a file, sending to a server).
 ///
-/// The class uses a timer to process log records at regular intervals,
-/// and processes a certain number of records at a time.
-///
-/// This helps balance responsiveness and resource usage.
-///
 /// The processing interval and chunk size can be changed dynamically,
 /// allowing developers to adjust the logger's performance at runtime.
 ///
 /// The class provides a stream of `BDLogError` that occurred during logging,
 /// allowing developers to handle logging errors in a centralized way.
-///
-/// This class is thread-safe. Methods that modify shared resources are
-/// synchronized to ensure that only one thread can execute them at a time.
 ///
 /// Here's an example of how to use this class:
 ///
@@ -73,9 +66,6 @@ class BDLogger {
   /// The default number of log records that are processed at a time.
   static const int defaultProcessingBatchSize = 100;
 
-  /// The default duration at which log records are processed.
-  static const Duration defaultProcessingInterval = Duration(milliseconds: 200);
-
   /// Returns the singleton instance of the `BDLogger` class.
   factory BDLogger() {
     return _instance ??= BDLogger.private(
@@ -91,17 +81,16 @@ class BDLogger {
   BDLogger.private(
     this._handlers,
     this._errorController, [
-    this._processingInterval = defaultProcessingInterval,
     this._processingBatchSize = defaultProcessingBatchSize,
   ]) {
     _registerLogProcessingTimer();
   }
 
-  Timer? _processingTimer;
+  /// A completer that is used to control the processing of log records.
+  @visibleForTesting
+  Completer<void>? processingTask;
 
   int _processingBatchSize;
-
-  Duration _processingInterval;
 
   final Set<BDLogHandler> _handlers;
 
@@ -114,20 +103,6 @@ class BDLogger {
   /// Returns a stream that emits [BDLogError] instances
   /// whenever an error occurs during logging.
   Stream<BDLogError> get onError => _errorController.stream;
-
-  /// Returns the duration at which log records are processed.
-  Duration get processingInterval => _processingInterval;
-
-  /// Changes the duration at which log records are processed.
-  /// If the new value is different from the current value,
-  /// the processing timer is restarted.
-  set processingInterval(Duration value) {
-    if (_processingInterval != value) {
-      _processingInterval = value;
-      _processingTimer?.cancel();
-      _registerLogProcessingTimer();
-    }
-  }
 
   /// Returns the number of log records that are processed at a time.
   int get processingBatchSize => _processingBatchSize;
@@ -149,7 +124,12 @@ class BDLogger {
   /// Adds a log handler to the logger.
   /// The handler will be used to process log records.
   void addHandler(final BDLogHandler handler) {
+    final bool wasEmpty = _handlers.isEmpty;
     _handlers.add(handler);
+
+    if (wasEmpty) {
+      unawaited(_registerLogProcessingTimer());
+    }
   }
 
   /// Removes a log handler from the logger.
@@ -248,20 +228,22 @@ class BDLogger {
     );
 
     recordQueue.add(newLogRecord);
+
+    final Completer<void>? task = processingTask;
+
+    if (task == null || task.isCompleted) {
+      unawaited(_registerLogProcessingTimer());
+    }
   }
 
   /// Destroys the singleton instance of the `BDLogger` class.
   /// This also calls the `clean` method on every [BDCleanableLogHandler].
   Future<void> destroy() async {
-    _processingTimer?.cancel();
+    _completeProcessingTask();
 
-    await Future.doWhile(() async {
-      if (recordQueue.isEmpty) {
-        return false;
-      }
+    while (recordQueue.isNotEmpty) {
       await _processLogRecord(recordQueue.removeFirst());
-      return true;
-    });
+    }
 
     try {
       for (final BDCleanableLogHandler handler
@@ -280,16 +262,28 @@ class BDLogger {
     return _errorController.close();
   }
 
-  void _registerLogProcessingTimer() {
-    _processingTimer = Timer.periodic(_processingInterval, (Timer timer) async {
-      for (int i = 0; i < _processingBatchSize; i++) {
-        if (recordQueue.isNotEmpty) {
-          _processLogRecord(recordQueue.removeFirst());
-        } else {
-          return;
-        }
+  Future<void> _registerLogProcessingTimer() async {
+    final Completer<void> resolvedTask = processingTask?.isCompleted ?? true
+        ? Completer<void>()
+        : processingTask!;
+    processingTask = resolvedTask;
+
+    if (_handlers.isNotEmpty) {
+      final int recordsToProcess =
+          min(recordQueue.length, _processingBatchSize);
+
+      for (int i = 0; i < recordsToProcess; i++) {
+        await _processLogRecord(recordQueue.removeFirst());
       }
-    });
+
+      if (recordQueue.isNotEmpty) {
+        return _registerLogProcessingTimer();
+      }
+    }
+
+    if (!resolvedTask.isCompleted) {
+      resolvedTask.complete();
+    }
   }
 
   Future<void> _processLogRecord(final BDLogRecord record) {
@@ -310,5 +304,12 @@ class BDLogger {
         }
       }
     });
+  }
+
+  void _completeProcessingTask() {
+    final Completer<void>? currentTask = processingTask;
+    if (currentTask != null && !currentTask.isCompleted) {
+      currentTask.complete();
+    }
   }
 }

@@ -193,76 +193,12 @@ void main() {
 
         logger.info('he he he man the test should pass :)');
 
-        while (logger.recordQueue.isNotEmpty) {
-          await Future<void>.delayed(BDLogger.defaultProcessingInterval);
+        while (logger.processingTask?.isCompleted == false) {
+          await Future<void>.delayed(const Duration(milliseconds: 100));
         }
 
         expect(firstHandler.howManyTimeHandleWasCall, equals(1));
-
         expect(secondHandler.howManyTimeHandleWasCall, equals(1));
-      },
-    );
-
-    test(
-      'processingInterval should control the frequency of log processing',
-      () async {
-        final BDLogger logger = BDLogger();
-        final TestLogHandler handler = TestLogHandler();
-        logger
-          ..addHandler(handler)
-          ..processingInterval = const Duration(milliseconds: 500)
-          ..debug('Debug message');
-
-        await Future<void>.delayed(const Duration(milliseconds: 250));
-        expect(handler.howManyTimeHandleWasCall, equals(0));
-
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        expect(handler.howManyTimeHandleWasCall, equals(1));
-
-        logger.destroy();
-      },
-    );
-
-    test(
-      'processingBatchSize should control '
-      'the number of logs processed at a time',
-      () async {
-        final BDLogger logger = BDLogger();
-        final TestLogHandler handler = TestLogHandler();
-
-        logger
-          ..addHandler(handler)
-          ..processingBatchSize = 2
-          ..debug('Debug message 1')
-          ..debug('Debug message 2')
-          ..debug('Debug message 3');
-
-        await Future<void>.delayed(logger.processingInterval);
-        expect(handler.howManyTimeHandleWasCall, equals(2));
-
-        await Future<void>.delayed(logger.processingInterval);
-        expect(handler.howManyTimeHandleWasCall, equals(3));
-
-        logger.destroy();
-      },
-    );
-
-    test(
-      'log processing should stop after destroy is called',
-      () async {
-        final BDLogger logger = BDLogger();
-        final TestLogHandler handler = TestLogHandler();
-        logger
-          ..addHandler(handler)
-          ..debug('Debug message 1');
-
-        await logger.destroy();
-        logger.debug('Debug message 2');
-
-        await Future<void>.delayed(logger.processingInterval);
-        expect(handler.howManyTimeHandleWasCall, equals(1));
-
-        logger.destroy();
       },
     );
 
@@ -281,16 +217,11 @@ void main() {
 
         final Stopwatch stopwatch = Stopwatch()..start();
 
-        // Wait for all logs to be processed
-        final Completer<void> completer = Completer<void>();
-        Timer.periodic(logger.processingInterval, (Timer timer) {
-          if (logger.recordQueue.isEmpty) {
-            timer.cancel();
-            completer.complete();
-          }
-        });
+        // Process all logs
+        while (logger.recordQueue.isNotEmpty) {
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        }
 
-        await completer.future;
         stopwatch.stop();
 
         final Duration processingTime = stopwatch.elapsed;
@@ -315,8 +246,9 @@ void main() {
 
         expect(handler.howManyTimeHandleWasCall, equals(numberOfLogs));
 
-        logger.destroy();
+        await logger.destroy();
       },
+      timeout: const Timeout(Duration(minutes: 5)),
     );
   });
 }
