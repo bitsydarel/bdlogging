@@ -1,6 +1,10 @@
+## 1.0.2
+
+* Added support for bdlogging 1.1.1
+
 ## 1.0.1
 
-* Added support for bdlogging 1.0.1
+* Added support for bdlogging 1.1.0
 
 ## 1.0.0
 

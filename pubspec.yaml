@@ -1,6 +1,6 @@
 name: bdlogging
 description: A Flutter package that provide logging capability for flutter apps.
-version: 1.1.0
+version: 1.1.1
 homepage: https://github.com/bitsydarel/bdlogging
 
 environment:

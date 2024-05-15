@@ -1,3 +1,7 @@
+## 1.1.1
+
+* Fixed issue when recordQueue is empty, while processing logs.
+
 ## 1.1.0
 
 * Changed the processing of logs, to fix logs getting lost

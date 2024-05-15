@@ -273,7 +273,9 @@ class BDLogger {
           min(recordQueue.length, _processingBatchSize);
 
       for (int i = 0; i < recordsToProcess; i++) {
-        await _processLogRecord(recordQueue.removeFirst());
+        if (recordQueue.isNotEmpty) {
+          await _processLogRecord(recordQueue.removeFirst());
+        }
       }
 
       if (recordQueue.isNotEmpty) {
