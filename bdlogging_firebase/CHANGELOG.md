@@ -1,3 +1,7 @@
+## 1.1.0
+
+* Added support for firebase_crashlytics with 4.0.0
+
 ## 1.0.2
 
 * Added support for bdlogging 1.1.1
