@@ -1,3 +1,7 @@
+## 1.1.2
+
+* Fixed issue with handlers list being modified while processioning logs.
+
 ## 1.1.1
 
 * Fixed issue when recordQueue is empty, while processing logs.
