@@ -246,8 +246,10 @@ class BDLogger {
     }
 
     try {
-      for (final BDCleanableLogHandler handler
-          in handlers.whereType<BDCleanableLogHandler>()) {
+      final List<BDCleanableLogHandler> cleanableHandlers =
+          handlers.whereType<BDCleanableLogHandler>().toList();
+
+      for (final BDCleanableLogHandler handler in cleanableHandlers) {
         await handler.clean();
       }
     } on Object catch (error, stackTrace) {
@@ -289,7 +291,9 @@ class BDLogger {
   }
 
   Future<void> _processLogRecord(final BDLogRecord record) {
-    return Future.forEach(handlers, (BDLogHandler handler) async {
+    final List<BDLogHandler> currentHandlers = <BDLogHandler>[..._handlers];
+
+    return Future.forEach(currentHandlers, (BDLogHandler handler) async {
       if (handler.supportLevel(record.level)) {
         try {
           await handler.handleRecord(record);

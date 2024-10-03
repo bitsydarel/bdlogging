@@ -1,3 +1,7 @@
+## 1.1.3
+
+* Improvement over previous version, by using a new list instead of a unmodifiable version.
+
 ## 1.1.2
 
 * Fixed issue with handlers list being modified while processioning logs.
@@ -16,7 +20,6 @@
 * Updated the package to support dart 3.0.0.
 * Fixed issue with lost of events or wrong order of log events.
 * Fixed console logger because it was missing some events.
-
 
 ## 0.1.5
 
