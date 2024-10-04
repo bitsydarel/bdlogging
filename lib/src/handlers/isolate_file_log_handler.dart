@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 import 'dart:io';
 import 'dart:isolate';
 
@@ -85,31 +86,44 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
     _isolate = await Isolate.spawn(
       _startWorker,
       port.sendPort,
+      errorsAreFatal: false,
       debugName: '${logNamePrefix.toLowerCase()}_isolate_file_log_handler',
+      onError: port.sendPort,
+      onExit: port.sendPort,
     );
 
     final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
 
-    port.listen((Object? message) {
-      if (message is SendPort) {
-        final SendPort workerPort = message
-          ..send(
-            _FileLogHandlerOptions(
-              logFileDirectory: logFileDirectory,
-              maxFilesCount: maxFilesCount,
-              logNamePrefix: logNamePrefix,
-              maxLogSize: maxLogSizeInMb,
-              supportedLevels: supportedLevels
-                  .map((BDLevel level) => level.importance)
-                  .toList(),
-            ),
-          );
-        sendPortCompleter.complete(workerPort);
-      } else if (message == _cleanCompletedMessage) {
-        _isolate?.kill(priority: Isolate.immediate);
-        _cleanCompleter?.complete();
-      }
-    });
+    port.listen(
+      (Object? message) {
+        if (message is SendPort) {
+          final SendPort workerPort = message
+            ..send(
+              _FileLogHandlerOptions(
+                logFileDirectory: logFileDirectory,
+                maxFilesCount: maxFilesCount,
+                logNamePrefix: logNamePrefix,
+                maxLogSize: maxLogSizeInMb,
+                supportedLevels: supportedLevels
+                    .map((BDLevel level) => level.importance)
+                    .toList(),
+              ),
+            );
+          sendPortCompleter.complete(workerPort);
+        } else if (message == _cleanCompletedMessage) {
+          _isolate?.kill(priority: Isolate.immediate);
+          _cleanCompleter?.complete();
+        }
+      },
+      onError: (Object exception, StackTrace stackTrace) {
+        log(
+          'IsolateFileLogHandler.onError',
+          error: exception,
+          stackTrace: stackTrace,
+        );
+      },
+      onDone: () => log('IsolateFileLogHandler done'),
+    );
 
     return sendPortCompleter.future;
   }

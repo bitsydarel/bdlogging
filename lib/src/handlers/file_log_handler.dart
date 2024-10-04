@@ -194,10 +194,9 @@ class FileLogHandler extends BDCleanableLogHandler {
   /// Throws [AssertionError] if [logDir] does not exist.
   @visibleForTesting
   RandomAccessFile initializeFileSink(final Directory logDir) {
-    assert(
-      logDir.existsSync(),
-      'Log directory does not exist',
-    );
+    if (!logDir.existsSync()) {
+      logDir.createSync(recursive: true);
+    }
 
     final List<File> logFiles = getLogFiles();
 

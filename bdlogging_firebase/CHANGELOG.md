@@ -1,3 +1,8 @@
+## 1.2.0
+
+* Added support for bdlogging 1.2.0
+* Made dart 3.5.0 and flutter 3.24.0 as minimum required version.
+
 ## 1.1.4
 
 * Added support for bdlogging 1.1.3

@@ -1,3 +1,9 @@
+## 1.2.0
+
+* Added error handling in isolate file log handler.
+* Added auto-creation of log directory if it does not exist in file log handler.
+* Made dart 3.5.0 as minimum required version.
+
 ## 1.1.3
 
 * Improvement over previous version, by using a new list instead of a unmodifiable version.
