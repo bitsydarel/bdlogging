@@ -1,3 +1,8 @@
+## 1.3.0
+
+* Added support for Dart SDK constraint to ^3.6.0.
+* Updated dependencies to the latest versions that support at Dart SDK version greater than 3.0.0.
+
 ## 1.2.0
 
 * Added error handling in isolate file log handler.
