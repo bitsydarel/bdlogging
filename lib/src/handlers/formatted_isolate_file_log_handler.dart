@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:bdlogging/bdlogging.dart';
 
@@ -14,22 +15,34 @@ class FormattedIsolateFileLogHandler extends IsolateFileLogHandler {
   /// before being handled.
   /// Defaults to [DefaultLogFormatter] if not provided.
   FormattedIsolateFileLogHandler(
-    super.logFileDirectory, {
-    this.logFormatter = const DefaultLogFormatter(),
-  });
+      Directory logFileDirectory, {
+        int maxFilesCount = 5,
+        String logNamePrefix = '_log',
+        int maxLogSizeInMb = 5,
+        List<BDLevel> supportedLevels = const <BDLevel>[
+          BDLevel.warning,
+          BDLevel.success,
+          BDLevel.error,
+        ],
+        this.logFormatter = const DefaultLogFormatter(),
+      }) : super(
+    logFileDirectory,
+    maxFilesCount: maxFilesCount,
+    logNamePrefix: logNamePrefix,
+    maxLogSizeInMb: maxLogSizeInMb,
+    supportedLevels: supportedLevels,
+  );
 
   @override
   Future<void> handleRecord(BDLogRecord record) async {
-    final String rawLines = logFormatter.format(record);
-
+    final String formattedMessage = logFormatter.format(record);
     final BDLogRecord formattedRecord = BDLogRecord(
       record.level,
-      rawLines,
+      formattedMessage,
       error: record.error,
       stackTrace: record.stackTrace,
       isFatal: record.isFatal,
     );
-
-    super.handleRecord(formattedRecord);
+    await super.handleRecord(formattedRecord);
   }
 }
