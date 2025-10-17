@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'dart:io';
 import 'dart:isolate';
 
+import 'package:bdlogging/bdlogging.dart';
 import 'package:bdlogging/src/bd_cleanable_log_handler.dart';
 import 'package:bdlogging/src/bd_level.dart';
 import 'package:bdlogging/src/bd_log_record.dart';
@@ -39,6 +40,7 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
       BDLevel.success,
       BDLevel.error,
     ],
+    this.logFormatter = const DefaultLogFormatter(),
   })  : assert(
           logNamePrefix.isNotEmpty,
           'logNamePrefix should not be empty',
@@ -47,8 +49,11 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
           maxLogSizeInMb > 0,
           'maxLogSizeInMb should not be lower than zero',
         ) {
-    _workerSendPort = _startLogging();
+    _workerSendPort = _startLogging(logFormatter);
   }
+
+  /// [BDLogFormatter] that define how [BDLogRecord].
+  final BDLogFormatter logFormatter;
 
   /// Directory where to store the log files.
   final Directory logFileDirectory;
@@ -81,11 +86,11 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
     (await _workerSendPort).send(record);
   }
 
-  Future<SendPort> _startLogging() async {
+  Future<SendPort> _startLogging(BDLogFormatter logFormatter) async {
     final ReceivePort port = ReceivePort();
     _isolate = await Isolate.spawn(
       _startWorker,
-      port.sendPort,
+      <Object>[port.sendPort, logFormatter],
       errorsAreFatal: false,
       debugName: '${logNamePrefix.toLowerCase()}_isolate_file_log_handler',
       onError: port.sendPort,
@@ -141,15 +146,17 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 
 /// Top level function for isolate.
 /// Receive port created first.
-Future<void> _startWorker(Object message) async {
-  _FileLoggerWorker(message as SendPort);
+Future<void> _startWorker(List<dynamic> args) async {
+  final SendPort sendPort = args[0] as SendPort;
+  final BDLogFormatter logFormatter = args[1] as BDLogFormatter;
+  _FileLoggerWorker(sendPort, logFormatter);
 }
 
 const String _cleanCommand = 'clean';
 const String _cleanCompletedMessage = 'clean_completed';
 
 class _FileLoggerWorker {
-  _FileLoggerWorker(this._sendPort) {
+  _FileLoggerWorker(this._sendPort, this._logFormatter) {
     _receivePort = ReceivePort();
     _sendPort.send(_receivePort.sendPort);
     _receivePort.listen((Object? message) async {
@@ -164,6 +171,8 @@ class _FileLoggerWorker {
     });
   }
 
+  final BDLogFormatter _logFormatter;
+
   final SendPort _sendPort;
   late final ReceivePort _receivePort;
   late final FileLogHandler _fileLogHandler;
@@ -174,6 +183,7 @@ class _FileLoggerWorker {
       maxLogSizeInMb: options.maxLogSize,
       maxFilesCount: options.maxFilesCount,
       logFileDirectory: options.logFileDirectory,
+      logFormatter: _logFormatter,
       supportedLevels: _mapLevels(options.supportedLevels),
     );
   }
