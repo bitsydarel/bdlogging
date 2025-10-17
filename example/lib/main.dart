@@ -2,23 +2,16 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:bdlogging/bdlogging.dart';
+import 'package:example/encrypted_log_formatter.dart';
 
 void main() {
   final BDLogger logger = BDLogger()
     ..addHandler(
-      ConsoleLogHandler(
-        supportedLevels: BDLevel.values
-            .where((BDLevel level) => level != BDLevel.error)
-            .toList(),
-      ),
-    )
-    ..addHandler(
-      FileLogHandler(
-        logNamePrefix: 'example',
-        maxLogSizeInMb: 5,
-        maxFilesCount: 5,
-        logFileDirectory: Directory.current,
-        supportedLevels: <BDLevel>[BDLevel.error],
+      IsolateFileLogHandler(
+        Directory.current,
+        logNamePrefix: 'ex',
+        logFormatter: EncryptedLogFormatter("Hello"),
+        supportedLevels: BDLevel.values,
       ),
     )
     ..debug('Initialized logger');

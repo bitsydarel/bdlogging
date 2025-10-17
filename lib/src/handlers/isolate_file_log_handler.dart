@@ -87,6 +87,7 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
   }
 
   Future<SendPort> _startLogging(BDLogFormatter logFormatter) async {
+    print("current isolate: ${Isolate.current.debugName}");
     final ReceivePort port = ReceivePort();
     _isolate = await Isolate.spawn(
       _startWorker,
@@ -149,6 +150,7 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 Future<void> _startWorker(List<dynamic> args) async {
   final SendPort sendPort = args[0] as SendPort;
   final BDLogFormatter logFormatter = args[1] as BDLogFormatter;
+  print("startworker: current isolate: ${Isolate.current.debugName}");
   _FileLoggerWorker(sendPort, logFormatter);
 }
 
