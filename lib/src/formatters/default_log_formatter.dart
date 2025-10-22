@@ -33,4 +33,14 @@ class DefaultLogFormatter extends BDLogFormatter {
 
     return buffer.toString();
   }
+
+  @override
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'type': 'DefaultLogFormatter',
+  };
+
+  @override
+  DefaultLogFormatter fromJson(Map<String, dynamic> json) {
+    return const DefaultLogFormatter();
+  }
 }

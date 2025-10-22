@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:bdlogging/src/bd_cleanable_log_handler.dart';
 import 'package:bdlogging/src/bd_level.dart';
@@ -131,6 +132,7 @@ class FileLogHandler extends BDCleanableLogHandler {
 
   @override
   Future<void> handleRecord(BDLogRecord record) async {
+    print("current isolate: ${Isolate.current.debugName}");
     writer ??= initializeFileSink(logFileDirectory);
 
     assert(writer != null, 'sink should not be null here');
