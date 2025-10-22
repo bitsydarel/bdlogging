@@ -91,7 +91,7 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
     final ReceivePort port = ReceivePort();
     _isolate = await Isolate.spawn(
       _startWorker,
-      <Object>[port.sendPort, logFormatter],
+      <Object>[port.sendPort, logFormatter, logFormatter.toJson()],
       errorsAreFatal: false,
       debugName: '${logNamePrefix.toLowerCase()}_isolate_file_log_handler',
       onError: port.sendPort,
@@ -149,8 +149,10 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 /// Receive port created first.
 Future<void> _startWorker(List<dynamic> args) async {
   final SendPort sendPort = args[0] as SendPort;
-  final BDLogFormatter logFormatter = args[1] as BDLogFormatter;
+  final BDLogFormatter bdLogFormatter = args[1] as BDLogFormatter;
+  final Map<String, dynamic> formatterJson = args[2] as Map<String, dynamic>;
   print("startworker: current isolate: ${Isolate.current.debugName}");
+  final BDLogFormatter logFormatter = bdLogFormatter.fromJson(formatterJson);
   _FileLoggerWorker(sendPort, logFormatter);
 }
 

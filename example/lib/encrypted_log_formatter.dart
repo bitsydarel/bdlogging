@@ -1,6 +1,26 @@
 import 'package:bdlogging/bdlogging.dart';
 import 'package:intl/intl.dart';
 
+/// Represents a person with a name.
+/// Used for serialization in logging.
+class Person {
+  /// The name of the person.
+  final String name;
+
+  /// Creates a [Person] instance with the given [name].
+  Person(this.name);
+
+  /// Converts this [Person] to a JSON map.
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'name': name,
+      };
+
+  /// Creates a [Person] from a JSON map.
+  factory Person.fromJson(Map<String, dynamic> json) {
+    return Person(json['name'] as String);
+  }
+}
+
 /// Default implementation of a [BDLogFormatter].
 ///
 /// Format [BDLogRecord] to look like this:
@@ -11,12 +31,14 @@ class EncryptedLogFormatter extends BDLogFormatter {
 
   /// A password to use for the encryption/decryption.
 
-  EncryptedLogFormatter(this.x){
+  final Person x;
+
+  /// Constructs an [EncryptedLogFormatter] with the given [Person] instance.
+  /// Prints the hash code of [x] for debugging purposes.
+  EncryptedLogFormatter(this.x) {
     print("x hashCode: ${x.hashCode}");
   }
-  
-  final String x;
-  
+
   @override
   String format(final BDLogRecord record) {
     final DateFormat formatter = DateFormat('dd-MM-yyyy H:m:s');
@@ -27,10 +49,7 @@ class EncryptedLogFormatter extends BDLogFormatter {
       ..write("x=${x.hashCode}")
       ..write(time)
       ..write(' ${record.level.label}: ${record.isFatal ? 'FATAL ' : ''}')
-      ..write('${record.message} ')
-      ;
-    
-    
+      ..write('${record.message} ');
 
     if (record.error != null) {
       buffer.writeln(record.error.toString());
@@ -40,8 +59,6 @@ class EncryptedLogFormatter extends BDLogFormatter {
         ..writeln()
         ..writeln(record.stackTrace.toString());
     }
-
-    
 
     return _obfuscateLog(buffer.toString());
   }
@@ -90,7 +107,7 @@ class EncryptedLogFormatter extends BDLogFormatter {
       for (final RegExpMatch match in pattern.allMatches(obfuscatedMsg)) {
         obfuscatedMsg = obfuscatedMsg.replaceAllMapped(
           match.group(match.groupCount)!,
-              (Match match) => "*" * 6,
+          (Match match) => "*" * 6,
         );
       }
     }
@@ -124,4 +141,16 @@ class EncryptedLogFormatter extends BDLogFormatter {
     multiLine: true,
   );
 
+  @override
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'type': 'EncryptedLogFormatter',
+        'x': x.toJson(),
+      };
+
+  /// Deserialize from JSON (optional, for isolate usage).
+  @override
+  EncryptedLogFormatter fromJson(Map<String, dynamic> json) {
+    return EncryptedLogFormatter(
+        Person.fromJson(json['x'] as Map<String, dynamic>));
+  }
 }
