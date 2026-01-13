@@ -72,6 +72,10 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 
   Isolate? _isolate;
 
+  /// Separate port for receiving error and exit messages from the worker isolate.
+  /// This prevents interference with the main communication port.
+  ReceivePort? _errorPort;
+
   late final Future<SendPort> _workerSendPort;
 
   Completer<void>? _cleanCompleter;
@@ -83,16 +87,51 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 
   Future<SendPort> _startLogging() async {
     final ReceivePort port = ReceivePort();
+    
+    // Create a separate port for error and exit messages to prevent
+    // interference with the main communication port and avoid race conditions
+    // when the handler is rapidly destroyed and recreated.
+    final ReceivePort errorPort = ReceivePort();
+    _errorPort = errorPort;
+    
     _isolate = await Isolate.spawn(
       _startWorker,
       port.sendPort,
       errorsAreFatal: false,
       debugName: '${logNamePrefix.toLowerCase()}_isolate_file_log_handler',
-      onError: port.sendPort,
-      onExit: port.sendPort,
+      onError: errorPort.sendPort,
+      onExit: errorPort.sendPort,
     );
 
     final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+    
+    // Listen to error/exit messages on a separate port
+    errorPort.listen(
+      (Object? message) {
+        // Log any errors or exit notifications from the worker isolate
+        // but don't interact with the sendPortCompleter to avoid race conditions
+        if (message is List && message.length >= 2) {
+          // Error message format: [errorString, stackTraceString]
+          log(
+            'IsolateFileLogHandler worker error',
+            error: message[0],
+            stackTrace: message[1] != null 
+                ? StackTrace.fromString(message[1].toString()) 
+                : null,
+          );
+        } else if (message == null) {
+          // Exit notification (null is sent when isolate exits)
+          log('IsolateFileLogHandler worker isolate exited');
+        }
+      },
+      onError: (Object exception, StackTrace stackTrace) {
+        log(
+          'IsolateFileLogHandler.errorPort.onError',
+          error: exception,
+          stackTrace: stackTrace,
+        );
+      },
+    );
 
     port.listen(
       (Object? message) {
@@ -109,10 +148,18 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
                     .toList(),
               ),
             );
-          sendPortCompleter.complete(workerPort);
+          // Guard against completing an already completed completer
+          // This can happen in race conditions when the handler is
+          // rapidly destroyed and recreated
+          if (!sendPortCompleter.isCompleted) {
+            sendPortCompleter.complete(workerPort);
+          }
         } else if (message == _cleanCompletedMessage) {
           _isolate?.kill(priority: Isolate.immediate);
-          _cleanCompleter?.complete();
+          // Guard against completing an already completed completer
+          if (!(_cleanCompleter?.isCompleted ?? true)) {
+            _cleanCompleter?.complete();
+          }
         }
       },
       onError: (Object exception, StackTrace stackTrace) {
@@ -135,6 +182,11 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
   Future<void> clean() async {
     (await _workerSendPort).send(_cleanCommand);
     _cleanCompleter = Completer<void>();
+    
+    // Close the error port to clean up resources
+    _errorPort?.close();
+    _errorPort = null;
+    
     return _cleanCompleter!.future;
   }
 }
