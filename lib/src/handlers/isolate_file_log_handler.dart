@@ -99,6 +99,23 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 
   Completer<void>? _cleanCompleter;
 
+  /// Completer for the worker send port initialization.
+  /// Exposed for testing purposes only.
+  @visibleForTesting
+  Completer<SendPort>? sendPortCompleterForTesting;
+
+  /// Getter for the clean completer.
+  /// Exposed for testing purposes only.
+  @visibleForTesting
+  Completer<void>? get cleanCompleterForTesting => _cleanCompleter;
+
+  /// Setter for the clean completer.
+  /// Exposed for testing purposes only.
+  @visibleForTesting
+  set cleanCompleterForTesting(Completer<void>? value) {
+    _cleanCompleter = value;
+  }
+
   @override
   Future<void> handleRecord(BDLogRecord record) async {
     (await _workerSendPort).send(record);
@@ -116,42 +133,61 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
     );
 
     final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+    sendPortCompleterForTesting = sendPortCompleter;
 
     port.listen(
-      (Object? message) {
-        if (message is SendPort) {
-          final SendPort workerPort = message
-            ..send(
-              _FileLogHandlerOptions(
-                logFileDirectory: logFileDirectory,
-                maxFilesCount: maxFilesCount,
-                logNamePrefix: logNamePrefix,
-                maxLogSize: maxLogSizeInMb,
-                supportedLevels: supportedLevels
-                    .map((BDLevel level) => level.importance)
-                    .toList(),
-              ),
-            );
-          // Fix: Guard against completing an already completed Completer.
-          // This can happen when Isolate.spawn sends multiple messages
-          // (e.g., error/exit messages) to the same port before or after
-          // the SendPort message, especially during rapid background callbacks.
-          if (!sendPortCompleter.isCompleted) {
-            sendPortCompleter.complete(workerPort);
-          }
-        } else if (message == _cleanCompletedMessage) {
-          _isolate?.kill(priority: Isolate.immediate);
-          // Fix: Guard against completing an already completed Completer.
-          if (_cleanCompleter != null && !_cleanCompleter!.isCompleted) {
-            _cleanCompleter?.complete();
-          }
-        }
-      },
+      (Object? message) => handlePortMessage(message, sendPortCompleter),
       onError: handlePortError,
       onDone: handlePortDone,
     );
 
     return sendPortCompleter.future;
+  }
+
+  /// Handles messages received from the isolate port.
+  ///
+  /// This method processes two types of messages:
+  /// - [SendPort]: The worker's send port for communication
+  /// - [_cleanCompletedMessage]: Signal that cleanup is complete
+  ///
+  /// The method includes guards to prevent completing an already
+  /// completed Completer, which can happen when Isolate.spawn sends
+  /// multiple messages (e.g., error/exit messages) to the same port.
+  ///
+  /// This method is visible for testing to allow verification
+  /// of the Completer guard behavior.
+  @visibleForTesting
+  void handlePortMessage(
+    Object? message,
+    Completer<SendPort> sendPortCompleter,
+  ) {
+    if (message is SendPort) {
+      final SendPort workerPort = message
+        ..send(
+          _FileLogHandlerOptions(
+            logFileDirectory: logFileDirectory,
+            maxFilesCount: maxFilesCount,
+            logNamePrefix: logNamePrefix,
+            maxLogSize: maxLogSizeInMb,
+            supportedLevels: supportedLevels
+                .map((BDLevel level) => level.importance)
+                .toList(),
+          ),
+        );
+      // Fix: Guard against completing an already completed Completer.
+      // This can happen when Isolate.spawn sends multiple messages
+      // (e.g., error/exit messages) to the same port before or after
+      // the SendPort message, especially during rapid background callbacks.
+      if (!sendPortCompleter.isCompleted) {
+        sendPortCompleter.complete(workerPort);
+      }
+    } else if (message == cleanCompletedMessage) {
+      _isolate?.kill(priority: Isolate.immediate);
+      // Fix: Guard against completing an already completed Completer.
+      if (_cleanCompleter != null && !_cleanCompleter!.isCompleted) {
+        _cleanCompleter?.complete();
+      }
+    }
   }
 
   @override
@@ -200,7 +236,11 @@ Future<void> _startWorker(Object message) async {
 }
 
 const String _cleanCommand = 'clean';
-const String _cleanCompletedMessage = 'clean_completed';
+
+/// Message sent when cleanup is completed.
+/// Exposed for testing purposes.
+@visibleForTesting
+const String cleanCompletedMessage = 'clean_completed';
 
 class _FileLoggerWorker {
   _FileLoggerWorker(this._sendPort) {
@@ -213,7 +253,7 @@ class _FileLoggerWorker {
         _processRequest(message);
       } else if (message == _cleanCommand) {
         await _fileLogHandler.clean();
-        _sendPort.send(_cleanCompletedMessage);
+        _sendPort.send(cleanCompletedMessage);
       }
     });
   }

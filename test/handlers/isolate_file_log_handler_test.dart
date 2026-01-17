@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:bdlogging/src/bd_level.dart';
 import 'package:bdlogging/src/bd_log_record.dart';
@@ -526,6 +528,181 @@ void main() {
       handler.handlePortDone();
 
       expect(callCount, equals(2));
+
+      // Clean up
+      handler.clean();
+    });
+  });
+
+  group('IsolateFileLogHandler Completer guards', () {
+    test(
+        'handlePortMessage should not throw when SendPort received '
+        'multiple times', () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'sendport_guard_test',
+      );
+
+      // Wait for the handler to initialize and get the sendPortCompleter
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      final Completer<SendPort>? sendPortCompleter =
+          handler.sendPortCompleterForTesting;
+      expect(sendPortCompleter, isNotNull);
+      expect(sendPortCompleter!.isCompleted, isTrue);
+
+      // Create a mock SendPort to simulate duplicate message
+      final ReceivePort mockReceivePort = ReceivePort();
+      final SendPort mockSendPort = mockReceivePort.sendPort;
+
+      // This should NOT throw even though the completer is already completed
+      // The guard should prevent the second complete() call
+      expect(
+        () => handler.handlePortMessage(mockSendPort, sendPortCompleter),
+        returnsNormally,
+      );
+
+      // Verify completer is still completed (not reset)
+      expect(sendPortCompleter.isCompleted, isTrue);
+
+      // Clean up
+      mockReceivePort.close();
+      handler.clean();
+    });
+
+    test(
+        'handlePortMessage should not throw when cleanCompletedMessage '
+        'received multiple times', () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'clean_guard_test',
+      );
+
+      // Wait for the handler to initialize
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // Set up a clean completer to simulate clean() was called
+      final Completer<void> cleanCompleter = Completer<void>();
+      handler.cleanCompleterForTesting = cleanCompleter;
+
+      // Get the sendPortCompleter for the handlePortMessage call
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+
+      // First cleanCompletedMessage should complete the completer
+      handler.handlePortMessage(cleanCompletedMessage, sendPortCompleter);
+      expect(cleanCompleter.isCompleted, isTrue);
+
+      // Second cleanCompletedMessage should NOT throw
+      // The guard should prevent the second complete() call
+      expect(
+        () =>
+            handler.handlePortMessage(cleanCompletedMessage, sendPortCompleter),
+        returnsNormally,
+      );
+
+      // Clean up
+      handler.clean();
+    });
+
+    test(
+        'handlePortMessage should handle cleanCompletedMessage '
+        'when cleanCompleter is null', () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'null_clean_test',
+      );
+
+      // Wait for the handler to initialize
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // Ensure cleanCompleter is null
+      handler.cleanCompleterForTesting = null;
+      expect(handler.cleanCompleterForTesting, isNull);
+
+      // Get the sendPortCompleter for the handlePortMessage call
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+
+      // cleanCompletedMessage should NOT throw even when cleanCompleter is null
+      expect(
+        () =>
+            handler.handlePortMessage(cleanCompletedMessage, sendPortCompleter),
+        returnsNormally,
+      );
+
+      // Clean up
+      handler.clean();
+    });
+
+    test('sendPortCompleter guard prevents StateError on duplicate SendPort',
+        () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'state_error_test',
+      );
+
+      // Wait for the handler to initialize
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // Create a fresh completer that's already completed
+      final Completer<SendPort> alreadyCompletedCompleter =
+          Completer<SendPort>();
+      final ReceivePort mockReceivePort = ReceivePort();
+      alreadyCompletedCompleter.complete(mockReceivePort.sendPort);
+
+      // Wait for the future to complete
+      await alreadyCompletedCompleter.future;
+
+      // Create another mock SendPort
+      final ReceivePort anotherMockReceivePort = ReceivePort();
+      final SendPort anotherMockSendPort = anotherMockReceivePort.sendPort;
+
+      // Without the guard, this would throw:
+      // StateError: Future already completed
+      expect(
+        () => handler.handlePortMessage(
+          anotherMockSendPort,
+          alreadyCompletedCompleter,
+        ),
+        returnsNormally,
+      );
+
+      // Clean up
+      mockReceivePort.close();
+      anotherMockReceivePort.close();
+      handler.clean();
+    });
+
+    test('cleanCompleter guard prevents StateError on duplicate clean message',
+        () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'clean_state_error',
+      );
+
+      // Wait for the handler to initialize
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // Create a fresh completer that's already completed
+      final Completer<void> alreadyCompletedCleanCompleter = Completer<void>();
+      alreadyCompletedCleanCompleter.complete();
+
+      // Wait for the future to complete
+      await alreadyCompletedCleanCompleter.future;
+
+      // Set it as the handler's cleanCompleter
+      handler.cleanCompleterForTesting = alreadyCompletedCleanCompleter;
+
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+
+      // Without the guard, this would throw:
+      // StateError: Future already completed
+      expect(
+        () => handler.handlePortMessage(
+          cleanCompletedMessage,
+          sendPortCompleter,
+        ),
+        returnsNormally,
+      );
 
       // Clean up
       handler.clean();
