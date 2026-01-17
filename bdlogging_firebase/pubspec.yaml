@@ -1,6 +1,6 @@
 name: bdlogging_firebase
 description: A Flutter package that provide BDLogHandler for firebase services.
-version: 1.3.1
+version: 1.3.2
 homepage: https://github.com/bitsydarel/bdlogging
 
 environment:
@@ -8,7 +8,7 @@ environment:
   flutter: '>=3.32.0'
 
 dependencies:
-  bdlogging: ^1.3.1
+  bdlogging: ^1.3.2
   firebase_crashlytics: '>=5.0.0 <6.0.0'
   flutter:
     sdk: flutter
