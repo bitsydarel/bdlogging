@@ -8,10 +8,10 @@ import 'package:io/ansi.dart' as ansi;
 import 'package:mocktail/mocktail.dart' as mockito;
 import 'package:test/test.dart';
 
-const String ansiMarkerEnd = '[0m';
+const String ansiMarkerEnd = '\x1B[0m';
 
 String getAnsiMarkerStart(final int ansiColorCode) {
-  return '[${ansiColorCode}m';
+  return '\x1B[${ansiColorCode}m';
 }
 
 const Duration friction = Duration(milliseconds: 100);
@@ -137,6 +137,116 @@ void main() {
       handler.handleRecord(record);
 
       mockito.verify(() => formatter.format(record)).called(1);
+    });
+  });
+
+  group('handleRecord edge cases', () {
+    test('should handle multi-line log messages', () {
+      final List<String> printedLines = <String>[];
+
+      final ConsoleLogHandler handler = ConsoleLogHandler.private(
+        BDLevel.values,
+        const DefaultLogFormatter(),
+        (String line) => printedLines.add(line),
+      );
+
+      final BDLogRecord multiLineRecord = BDLogRecord(
+        BDLevel.info,
+        'Line 1\nLine 2\nLine 3',
+      );
+
+      handler.handleRecord(multiLineRecord);
+
+      // Each line should be printed separately and colored
+      expect(printedLines.length, greaterThanOrEqualTo(3));
+    });
+
+    test('should handle empty message', () {
+      final List<String> printedLines = <String>[];
+
+      final ConsoleLogHandler handler = ConsoleLogHandler.private(
+        BDLevel.values,
+        const DefaultLogFormatter(),
+        (String line) => printedLines.add(line),
+      );
+
+      final BDLogRecord emptyRecord = BDLogRecord(
+        BDLevel.debug,
+        '',
+      );
+
+      // Should not throw
+      expect(
+        () => handler.handleRecord(emptyRecord),
+        returnsNormally,
+      );
+    });
+
+    test('should call printer for each line of multi-line message', () {
+      int callCount = 0;
+
+      final _MockFormatter formatter = _MockFormatter();
+      final ConsoleLogHandler handler = ConsoleLogHandler.private(
+        BDLevel.values,
+        formatter,
+        (String line) => callCount++,
+      );
+
+      final BDLogRecord record = BDLogRecord(BDLevel.info, 'test');
+
+      // Formatter returns 3 lines
+      mockito
+          .when(() => formatter.format(record))
+          .thenReturn('Line 1\nLine 2\nLine 3');
+
+      handler.handleRecord(record);
+
+      expect(callCount, equals(3));
+    });
+
+    test('should handle message with error and stacktrace', () {
+      final List<String> printedLines = <String>[];
+
+      final ConsoleLogHandler handler = ConsoleLogHandler.private(
+        BDLevel.values,
+        const DefaultLogFormatter(),
+        (String line) => printedLines.add(line),
+      );
+
+      final BDLogRecord recordWithError = BDLogRecord(
+        BDLevel.error,
+        'Error occurred',
+        error: Exception('Test exception'),
+        stackTrace: StackTrace.current,
+      );
+
+      handler.handleRecord(recordWithError);
+
+      // Should print multiple lines (message, error, stacktrace)
+      expect(printedLines, isNotEmpty);
+    });
+  });
+
+  group('supportLevel edge cases', () {
+    test('should return false for all levels when supportedLevels is empty',
+        () {
+      final ConsoleLogHandler handler = ConsoleLogHandler(
+        supportedLevels: <BDLevel>[],
+      );
+
+      for (final BDLevel level in BDLevel.values) {
+        expect(handler.supportLevel(level), isFalse);
+      }
+    });
+
+    test('should return true for all levels when all levels are supported', () {
+      final ConsoleLogHandler handler = ConsoleLogHandler(
+        supportedLevels: BDLevel.values,
+      );
+
+      for (final BDLevel level in BDLevel.values) {
+        expect(handler.supportLevel(level), isTrue);
+      }
     });
   });
 }

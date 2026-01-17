@@ -12,14 +12,20 @@ void main() {
   final BDLogRecord logRecord = BDLogRecord(BDLevel.debug, 'text');
 
   late Directory directory;
+  late String uniqueDirName;
 
   setUp(() {
-    directory = Directory(path.join(Directory.current.path, 'test/resources'))
-      ..createSync();
+    // Create a unique directory for each test to avoid conflicts
+    uniqueDirName = 'file_test_${DateTime.now().microsecondsSinceEpoch}';
+    directory = Directory(
+      path.join(Directory.current.path, 'test/resources', uniqueDirName),
+    )..createSync(recursive: true);
   });
 
   tearDown(() {
-    directory.deleteSync(recursive: true);
+    if (directory.existsSync()) {
+      directory.deleteSync(recursive: true);
+    }
   });
 
   group('handleRecord', () {
@@ -406,6 +412,201 @@ void main() {
             recursive: mockito.any(named: 'recursive'),
             followLinks: mockito.any(named: 'followLinks')))
         .called(1);
+  });
+
+  group('removeOldLogFilesIfRequired', () {
+    test('should delete oldest files when exceeding maxFilesCount', () {
+      // Create test files with different indices
+      final String testFileName =
+          'remove_test${FileLogHandler.logFileNameSuffix}';
+
+      final File file0 = File(path.join(directory.path, '${testFileName}0.log'))
+        ..createSync();
+      final File file1 = File(path.join(directory.path, '${testFileName}1.log'))
+        ..createSync();
+      final File file2 = File(path.join(directory.path, '${testFileName}2.log'))
+        ..createSync();
+      final File file3 = File(path.join(directory.path, '${testFileName}3.log'))
+        ..createSync();
+      final File file4 = File(path.join(directory.path, '${testFileName}4.log'))
+        ..createSync();
+
+      final FileLogHandler handler = FileLogHandler(
+        logNamePrefix: 'remove_test',
+        maxLogSizeInMb: 1,
+        maxFilesCount: 3,
+        logFileDirectory: directory,
+      );
+
+      handler.removeOldLogFilesIfRequired();
+
+      // Should have deleted the 2 oldest files (file0 and file1)
+      expect(file0.existsSync(), isFalse);
+      expect(file1.existsSync(), isFalse);
+      expect(file2.existsSync(), isTrue);
+      expect(file3.existsSync(), isTrue);
+      expect(file4.existsSync(), isTrue);
+    });
+
+    test('should not delete files when under maxFilesCount', () {
+      final String testFileName =
+          'under_limit${FileLogHandler.logFileNameSuffix}';
+
+      final File file0 = File(path.join(directory.path, '${testFileName}0.log'))
+        ..createSync();
+      final File file1 = File(path.join(directory.path, '${testFileName}1.log'))
+        ..createSync();
+
+      final FileLogHandler handler = FileLogHandler(
+        logNamePrefix: 'under_limit',
+        maxLogSizeInMb: 1,
+        maxFilesCount: 5,
+        logFileDirectory: directory,
+      );
+
+      handler.removeOldLogFilesIfRequired();
+
+      // Both files should still exist
+      expect(file0.existsSync(), isTrue);
+      expect(file1.existsSync(), isTrue);
+    });
+
+    test('should not delete files when at exactly maxFilesCount', () {
+      final String testFileName =
+          'exact_limit${FileLogHandler.logFileNameSuffix}';
+
+      final File file0 = File(path.join(directory.path, '${testFileName}0.log'))
+        ..createSync();
+      final File file1 = File(path.join(directory.path, '${testFileName}1.log'))
+        ..createSync();
+      final File file2 = File(path.join(directory.path, '${testFileName}2.log'))
+        ..createSync();
+
+      final FileLogHandler handler = FileLogHandler(
+        logNamePrefix: 'exact_limit',
+        maxLogSizeInMb: 1,
+        maxFilesCount: 3,
+        logFileDirectory: directory,
+      );
+
+      handler.removeOldLogFilesIfRequired();
+
+      // All files should still exist
+      expect(file0.existsSync(), isTrue);
+      expect(file1.existsSync(), isTrue);
+      expect(file2.existsSync(), isTrue);
+    });
+  });
+
+  group('initializeFileSink', () {
+    test('should auto-create directory if it does not exist', () {
+      final Directory nonExistentDir = Directory(
+        path.join(directory.path, 'non_existent_subdir'),
+      );
+
+      expect(nonExistentDir.existsSync(), isFalse);
+
+      final FileLogHandler handler = FileLogHandler(
+        logNamePrefix: 'auto_create',
+        maxLogSizeInMb: 1,
+        maxFilesCount: 5,
+        logFileDirectory: nonExistentDir,
+      );
+
+      handler.initializeFileSink(nonExistentDir);
+
+      expect(nonExistentDir.existsSync(), isTrue);
+    });
+
+    test('should auto-create nested directories recursively', () {
+      final Directory nestedDir = Directory(
+        path.join(directory.path, 'level1', 'level2', 'level3'),
+      );
+
+      expect(nestedDir.existsSync(), isFalse);
+
+      final FileLogHandler handler = FileLogHandler(
+        logNamePrefix: 'nested_create',
+        maxLogSizeInMb: 1,
+        maxFilesCount: 5,
+        logFileDirectory: nestedDir,
+      );
+
+      handler.initializeFileSink(nestedDir);
+
+      expect(nestedDir.existsSync(), isTrue);
+    });
+  });
+
+  group('getLogFiles', () {
+    test('should return only files matching logNamePrefix', () {
+      final String matchingPrefix =
+          'matching${FileLogHandler.logFileNameSuffix}';
+      final String otherPrefix = 'other${FileLogHandler.logFileNameSuffix}';
+
+      // Create matching files
+      File(path.join(directory.path, '${matchingPrefix}0.log')).createSync();
+      File(path.join(directory.path, '${matchingPrefix}1.log')).createSync();
+
+      // Create non-matching files
+      File(path.join(directory.path, '${otherPrefix}0.log')).createSync();
+      File(path.join(directory.path, 'random_file.txt')).createSync();
+
+      final FileLogHandler handler = FileLogHandler(
+        logNamePrefix: 'matching',
+        maxLogSizeInMb: 1,
+        maxFilesCount: 5,
+        logFileDirectory: directory,
+      );
+
+      final List<File> logFiles = handler.getLogFiles();
+
+      expect(logFiles, hasLength(2));
+      expect(
+        logFiles.every(
+          (File f) => path.basename(f.path).startsWith('matching'),
+        ),
+        isTrue,
+      );
+    });
+
+    test('should ignore directories in log directory', () {
+      final String prefix = 'dir_test${FileLogHandler.logFileNameSuffix}';
+
+      // Create a matching file
+      File(path.join(directory.path, '${prefix}0.log')).createSync();
+
+      // Create a directory with matching name
+      Directory(path.join(directory.path, '${prefix}1')).createSync();
+
+      final FileLogHandler handler = FileLogHandler(
+        logNamePrefix: 'dir_test',
+        maxLogSizeInMb: 1,
+        maxFilesCount: 5,
+        logFileDirectory: directory,
+      );
+
+      final List<File> logFiles = handler.getLogFiles();
+
+      expect(logFiles, hasLength(1));
+    });
+
+    test('should return empty list when no matching files exist', () {
+      // Create non-matching files only
+      File(path.join(directory.path, 'other_file.log')).createSync();
+      File(path.join(directory.path, 'another_file.txt')).createSync();
+
+      final FileLogHandler handler = FileLogHandler(
+        logNamePrefix: 'no_match',
+        maxLogSizeInMb: 1,
+        maxFilesCount: 5,
+        logFileDirectory: directory,
+      );
+
+      final List<File> logFiles = handler.getLogFiles();
+
+      expect(logFiles, isEmpty);
+    });
   });
 }
 

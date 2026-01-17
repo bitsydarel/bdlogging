@@ -1,3 +1,10 @@
+## 1.3.1
+
+* Fixed potential race condition in IsolateFileLogHandler with Completer guards.
+* Improved IsolateFileLogHandler testability with dependency injection for logging.
+* Added comprehensive test coverage for log handlers.
+* Fixed ANSI escape sequence handling in ConsoleLogHandler tests.
+
 ## 1.3.0
 
 * Added support for Dart SDK constraint to ^3.6.0.

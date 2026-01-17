@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:developer';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:isolate';
 
@@ -7,6 +7,15 @@ import 'package:bdlogging/src/bd_cleanable_log_handler.dart';
 import 'package:bdlogging/src/bd_level.dart';
 import 'package:bdlogging/src/bd_log_record.dart';
 import 'package:bdlogging/src/handlers/file_log_handler.dart';
+import 'package:meta/meta.dart';
+
+/// Function signature for logging operations.
+/// Used for dependency injection to enable testing.
+typedef LogFunction = void Function(
+  String message, {
+  Object? error,
+  StackTrace? stackTrace,
+});
 
 /// A implementation of [BDCleanableLogHandler]
 /// that write [BDLogRecord] to files in a different isolate.
@@ -29,6 +38,9 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
   ///
   /// [supportedLevels] will be used to discard [BDLogRecord] with
   /// [BDLevel] lower than [supportedLevels].
+  ///
+  /// [logFunction] is used for internal logging. Defaults to [developer.log].
+  /// Can be overridden for testing purposes.
   IsolateFileLogHandler(
     this.logFileDirectory, {
     this.maxFilesCount = 5,
@@ -39,15 +51,23 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
       BDLevel.success,
       BDLevel.error,
     ],
-  })  : assert(
-          logNamePrefix.isNotEmpty,
-          'logNamePrefix should not be empty',
-        ),
+    LogFunction? logFunction,
+  })  : _logFunction = logFunction ?? _defaultLog,
+        assert(logNamePrefix.isNotEmpty, 'logNamePrefix should not be empty'),
         assert(
           maxLogSizeInMb > 0,
           'maxLogSizeInMb should not be lower than zero',
         ) {
     _workerSendPort = _startLogging();
+  }
+
+  /// Default log function that delegates to [developer.log].
+  static void _defaultLog(
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    developer.log(message, error: error, stackTrace: stackTrace);
   }
 
   /// Directory where to store the log files.
@@ -69,6 +89,9 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 
   /// Supported [BDLevel] of [BDLogRecord].
   final List<BDLevel> supportedLevels;
+
+  /// The log function used for internal logging.
+  final LogFunction _logFunction;
 
   Isolate? _isolate;
 
@@ -109,20 +132,23 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
                     .toList(),
               ),
             );
-          sendPortCompleter.complete(workerPort);
+          // Fix: Guard against completing an already completed Completer.
+          // This can happen when Isolate.spawn sends multiple messages
+          // (e.g., error/exit messages) to the same port before or after
+          // the SendPort message, especially during rapid background callbacks.
+          if (!sendPortCompleter.isCompleted) {
+            sendPortCompleter.complete(workerPort);
+          }
         } else if (message == _cleanCompletedMessage) {
           _isolate?.kill(priority: Isolate.immediate);
-          _cleanCompleter?.complete();
+          // Fix: Guard against completing an already completed Completer.
+          if (_cleanCompleter != null && !_cleanCompleter!.isCompleted) {
+            _cleanCompleter?.complete();
+          }
         }
       },
-      onError: (Object exception, StackTrace stackTrace) {
-        log(
-          'IsolateFileLogHandler.onError',
-          error: exception,
-          stackTrace: stackTrace,
-        );
-      },
-      onDone: () => log('IsolateFileLogHandler done'),
+      onError: handlePortError,
+      onDone: handlePortDone,
     );
 
     return sendPortCompleter.future;
@@ -136,6 +162,34 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
     (await _workerSendPort).send(_cleanCommand);
     _cleanCompleter = Completer<void>();
     return _cleanCompleter!.future;
+  }
+
+  /// Handles errors from the receive port stream.
+  ///
+  /// This method is called when an error occurs in the port's stream.
+  /// It logs the error using the configured [_logFunction].
+  ///
+  /// This method is visible for testing to allow verification
+  /// of error handling behavior.
+  @visibleForTesting
+  void handlePortError(Object exception, StackTrace stackTrace) {
+    _logFunction(
+      'IsolateFileLogHandler.onError',
+      error: exception,
+      stackTrace: stackTrace,
+    );
+  }
+
+  /// Handles the completion of the receive port stream.
+  ///
+  /// This method is called when the port's stream is closed.
+  /// It logs a message indicating the handler is done.
+  ///
+  /// This method is visible for testing to allow verification
+  /// of stream completion handling.
+  @visibleForTesting
+  void handlePortDone() {
+    _logFunction('IsolateFileLogHandler done');
   }
 }
 
@@ -185,7 +239,7 @@ class _FileLoggerWorker {
   static List<BDLevel> _mapLevels(List<int> supportedLevels) {
     final Set<BDLevel> levels = <BDLevel>{};
 
-    supportedLevels.forEach((int level) {
+    for (final int level in supportedLevels) {
       switch (level) {
         case 3:
           levels.add(BDLevel.debug);
@@ -200,7 +254,7 @@ class _FileLoggerWorker {
           levels.add(BDLevel.error);
           break;
       }
-    });
+    }
 
     return levels.toList();
   }
