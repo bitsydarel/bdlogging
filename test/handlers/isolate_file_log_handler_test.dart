@@ -708,4 +708,342 @@ void main() {
       handler.clean();
     });
   });
+
+  group('IsolateFileLogHandler Completer guards integration tests', () {
+    test('full lifecycle with multiple log records completes successfully',
+        () async {
+      // Arrange: Create handler with unique prefix
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'full_lifecycle',
+        supportedLevels: BDLevel.values,
+      );
+
+      // Prepare multiple log records with different levels and content
+      final List<BDLogRecord> records = <BDLogRecord>[
+        BDLogRecord(BDLevel.debug, 'Debug message for lifecycle test'),
+        BDLogRecord(BDLevel.info, 'Info message for lifecycle test'),
+        BDLogRecord(BDLevel.warning, 'Warning message for lifecycle test'),
+        BDLogRecord(BDLevel.success, 'Success message for lifecycle test'),
+        BDLogRecord(
+          BDLevel.error,
+          'Error message for lifecycle test',
+          error: Exception('Test exception'),
+          stackTrace: StackTrace.current,
+        ),
+      ];
+
+      // Act: Send all log records
+      for (final BDLogRecord record in records) {
+        await handler.handleRecord(record);
+      }
+
+      // Wait for isolate to process all records
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+
+      // Verify sendPortCompleter is completed (isolate initialized)
+      expect(handler.sendPortCompleterForTesting, isNotNull);
+      expect(handler.sendPortCompleterForTesting!.isCompleted, isTrue);
+
+      // Call clean() and verify it completes
+      await expectLater(handler.clean(), completes);
+
+      // Verify cleanCompleter is completed
+      expect(handler.cleanCompleterForTesting, isNotNull);
+      expect(handler.cleanCompleterForTesting!.isCompleted, isTrue);
+
+      // Verify log file exists and contains all expected messages
+      final List<FileSystemEntity> files = testDirectory.listSync();
+      final List<File> logFiles = files
+          .whereType<File>()
+          .where((File f) => f.path.contains('full_lifecycle'))
+          .toList();
+
+      expect(logFiles, isNotEmpty, reason: 'Log file should be created');
+
+      final String content = logFiles.first.readAsStringSync();
+      expect(content, contains('Debug message for lifecycle test'));
+      expect(content, contains('Info message for lifecycle test'));
+      expect(content, contains('Warning message for lifecycle test'));
+      expect(content, contains('Success message for lifecycle test'));
+      expect(content, contains('Error message for lifecycle test'));
+
+      // Verify message ordering
+      final int debugIndex = content.indexOf('Debug message');
+      final int infoIndex = content.indexOf('Info message');
+      final int warningIndex = content.indexOf('Warning message');
+      final int successIndex = content.indexOf('Success message');
+      final int errorIndex = content.indexOf('Error message');
+
+      expect(debugIndex, lessThan(infoIndex));
+      expect(infoIndex, lessThan(warningIndex));
+      expect(warningIndex, lessThan(successIndex));
+      expect(successIndex, lessThan(errorIndex));
+    });
+
+    test('rapid clean() calls do not cause StateError', () async {
+      // Arrange: Create handler and send a log record
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'rapid_clean',
+        supportedLevels: BDLevel.values,
+      );
+
+      await handler.handleRecord(
+        BDLogRecord(BDLevel.info, 'Message before rapid clean'),
+      );
+
+      // Wait for isolate to initialize and process
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+
+      // Act: Call clean() multiple times rapidly without awaiting between calls
+      // This tests the guard against completing an already completed Completer
+      final List<Future<void>> cleanFutures = <Future<void>>[];
+
+      // First clean() - this should work normally
+      cleanFutures.add(handler.clean());
+
+      // Additional rapid calls - these create new Completers
+      // The guard should prevent StateError if cleanCompletedMessage arrives
+      // after the Completer was already completed
+      for (int i = 0; i < 3; i++) {
+        // Small delay to allow message processing between calls
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        try {
+          cleanFutures.add(handler.clean());
+        } on Exception {
+          // It's acceptable if subsequent clean() calls fail
+          // The important thing is no StateError from the Completer guard
+        }
+      }
+
+      // Assert: At least the first clean() should complete without StateError
+      // We use a timeout to prevent hanging if something goes wrong
+      bool firstCleanCompleted = false;
+      Object? caughtError;
+
+      try {
+        await cleanFutures.first.timeout(const Duration(seconds: 5));
+        firstCleanCompleted = true;
+      } on Exception catch (e) {
+        caughtError = e;
+      }
+
+      expect(
+        firstCleanCompleted,
+        isTrue,
+        reason: 'First clean() should complete. Error: $caughtError',
+      );
+
+      // Verify no StateError was thrown (would have propagated)
+      expect(caughtError, isNot(isA<StateError>()));
+    });
+
+    test('stress test: many concurrent handlers complete successfully',
+        () async {
+      // Arrange: Create multiple handlers with unique prefixes
+      const int handlerCount = 10;
+      final List<IsolateFileLogHandler> handlers = <IsolateFileLogHandler>[];
+
+      for (int i = 0; i < handlerCount; i++) {
+        handlers.add(
+          IsolateFileLogHandler(
+            testDirectory,
+            logNamePrefix: 'stress_handler_$i',
+            supportedLevels: BDLevel.values,
+          ),
+        );
+      }
+
+      // Act: Send log records to all handlers concurrently
+      final List<Future<void>> sendFutures = <Future<void>>[];
+      for (int i = 0; i < handlers.length; i++) {
+        sendFutures.add(
+          handlers[i].handleRecord(
+            BDLogRecord(BDLevel.info, 'Stress test message from handler $i'),
+          ),
+        );
+      }
+      await Future.wait(sendFutures);
+
+      // Wait for all isolates to process
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+
+      // Call clean() on all handlers concurrently
+      final List<Future<void>> cleanFutures = <Future<void>>[];
+      for (final IsolateFileLogHandler handler in handlers) {
+        cleanFutures.add(handler.clean());
+      }
+
+      // Assert: All clean() futures should complete without StateError
+      Object? caughtError;
+      try {
+        await Future.wait(cleanFutures).timeout(const Duration(seconds: 10));
+      } on Exception catch (e) {
+        caughtError = e;
+      }
+
+      expect(
+        caughtError,
+        isNull,
+        reason: 'All handlers should complete without error. Got: $caughtError',
+      );
+
+      // Verify all log files were created
+      final List<FileSystemEntity> files = testDirectory.listSync();
+      for (int i = 0; i < handlerCount; i++) {
+        final List<File> handlerLogFiles = files
+            .whereType<File>()
+            .where((File f) => f.path.contains('stress_handler_$i'))
+            .toList();
+
+        expect(
+          handlerLogFiles,
+          isNotEmpty,
+          reason: 'Log file for handler $i should exist',
+        );
+
+        final String content = handlerLogFiles.first.readAsStringSync();
+        expect(
+          content,
+          contains('Stress test message from handler $i'),
+          reason: 'Handler $i log should contain expected message',
+        );
+      }
+
+      // Verify all sendPortCompleters are completed
+      for (int i = 0; i < handlers.length; i++) {
+        expect(
+          handlers[i].sendPortCompleterForTesting?.isCompleted,
+          isTrue,
+          reason: 'Handler $i sendPortCompleter should be completed',
+        );
+      }
+    });
+
+    test('handler survives isolate exit messages after clean()', () async {
+      // Arrange: Create handler and send log records
+      final List<String> logMessages = <String>[];
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'isolate_exit',
+        supportedLevels: BDLevel.values,
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          logMessages.add(message);
+        },
+      );
+
+      await handler.handleRecord(
+        BDLogRecord(BDLevel.info, 'Message before isolate exit'),
+      );
+
+      // Wait for processing
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+
+      // Act: Call clean() which kills the isolate
+      // The isolate exit will send a null message to the port (onExit)
+      // The guard should handle this gracefully
+      await expectLater(
+        handler.clean().timeout(const Duration(seconds: 5)),
+        completes,
+      );
+
+      // Give time for any additional exit messages to arrive
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // Assert: Handler completed successfully
+      expect(handler.cleanCompleterForTesting?.isCompleted, isTrue);
+
+      // Verify log file was created
+      final List<FileSystemEntity> files = testDirectory.listSync();
+      final List<File> logFiles = files
+          .whereType<File>()
+          .where((File f) => f.path.contains('isolate_exit'))
+          .toList();
+
+      expect(logFiles, isNotEmpty);
+      expect(
+        logFiles.first.readAsStringSync(),
+        contains('Message before isolate exit'),
+      );
+
+      // If handlePortDone was called (isolate exit), it should have logged
+      // This is expected behavior, not an error
+      // The key is that no StateError occurred
+    });
+
+    test('back-to-back handler creation and cleanup works correctly', () async {
+      // First handler lifecycle
+      final IsolateFileLogHandler handler1 = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'backtoback_session1',
+        supportedLevels: BDLevel.values,
+      );
+
+      await handler1.handleRecord(
+        BDLogRecord(BDLevel.info, 'Session 1 message'),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await handler1.clean();
+
+      // Verify first handler completed
+      expect(handler1.cleanCompleterForTesting?.isCompleted, isTrue);
+
+      // Second handler lifecycle (same pattern, different prefix)
+      final IsolateFileLogHandler handler2 = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'backtoback_session2',
+        supportedLevels: BDLevel.values,
+      );
+
+      await handler2.handleRecord(
+        BDLogRecord(BDLevel.info, 'Session 2 message'),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await handler2.clean();
+
+      // Verify second handler completed
+      expect(handler2.cleanCompleterForTesting?.isCompleted, isTrue);
+
+      // Verify both log files exist with correct content
+      final List<FileSystemEntity> files = testDirectory.listSync();
+
+      final List<File> session1Files = files
+          .whereType<File>()
+          .where((File f) => f.path.contains('backtoback_session1'))
+          .toList();
+      final List<File> session2Files = files
+          .whereType<File>()
+          .where((File f) => f.path.contains('backtoback_session2'))
+          .toList();
+
+      expect(session1Files, isNotEmpty, reason: 'Session 1 log should exist');
+      expect(session2Files, isNotEmpty, reason: 'Session 2 log should exist');
+
+      expect(
+        session1Files.first.readAsStringSync(),
+        contains('Session 1 message'),
+      );
+      expect(
+        session2Files.first.readAsStringSync(),
+        contains('Session 2 message'),
+      );
+
+      // Verify no state bleeding - session 1 log should NOT contain session 2
+      expect(
+        session1Files.first.readAsStringSync(),
+        isNot(contains('Session 2 message')),
+      );
+      expect(
+        session2Files.first.readAsStringSync(),
+        isNot(contains('Session 1 message')),
+      );
+    });
+  });
 }
