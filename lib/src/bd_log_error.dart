@@ -7,5 +7,5 @@ class BDLogError {
   final StackTrace stackTrace;
 
   /// Create a new instance of [BDLogError].
-  BDLogError(this.exception, this.stackTrace);
+  const BDLogError(this.exception, this.stackTrace);
 }

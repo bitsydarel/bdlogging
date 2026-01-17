@@ -82,6 +82,10 @@ class FileLogHandler extends BDCleanableLogHandler {
         assert(
           maxLogSizeInMb > 0,
           'maxLogSizeInMb should not be lower than zero',
+        ),
+        assert(
+          maxFilesCount > 0,
+          'maxFilesCount should be greater than zero',
         );
 
   /// Prefix of each log files created by this [FileLogHandler].

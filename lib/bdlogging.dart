@@ -260,7 +260,6 @@ class BDLogger {
 
     _instance = null;
 
-    await _errorController.sink.close();
     return _errorController.close();
   }
 

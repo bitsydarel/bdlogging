@@ -57,6 +57,10 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
         assert(
           maxLogSizeInMb > 0,
           'maxLogSizeInMb should not be lower than zero',
+        ),
+        assert(
+          maxFilesCount > 0,
+          'maxFilesCount should be greater than zero',
         ) {
     _workerSendPort = _startLogging();
   }
@@ -95,6 +99,8 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 
   Isolate? _isolate;
 
+  ReceivePort? _receivePort;
+
   late final Future<SendPort> _workerSendPort;
 
   Completer<void>? _cleanCompleter;
@@ -123,6 +129,7 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 
   Future<SendPort> _startLogging() async {
     final ReceivePort port = ReceivePort();
+    _receivePort = port;
     _isolate = await Isolate.spawn(
       _startWorker,
       port.sendPort,
@@ -200,6 +207,7 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
   /// Kills the isolate and completes the clean completer.
   void _handleCleanCompletedMessage() {
     _isolate?.kill(priority: Isolate.immediate);
+    _receivePort?.close();
     // Guard against completing an already completed Completer.
     if (_cleanCompleter != null && !_cleanCompleter!.isCompleted) {
       _cleanCompleter?.complete();
@@ -211,8 +219,13 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 
   @override
   Future<void> clean() async {
-    (await _workerSendPort).send(_cleanCommand);
+    // Guard against calling clean() multiple times concurrently.
+    // If a clean is already in progress, return the existing future.
+    if (_cleanCompleter != null && !_cleanCompleter!.isCompleted) {
+      return _cleanCompleter!.future;
+    }
     _cleanCompleter = Completer<void>();
+    (await _workerSendPort).send(_cleanCommand);
     return _cleanCompleter!.future;
   }
 
@@ -265,11 +278,19 @@ class _FileLoggerWorker {
     _receivePort.listen((Object? message) async {
       if (message is _FileLogHandlerOptions) {
         _initialise(message);
+        _processPendingRecords();
       } else if (message is BDLogRecord) {
-        _processRequest(message);
+        if (_isInitialized) {
+          await _processRequest(message);
+        } else {
+          _pendingRecords.add(message);
+        }
       } else if (message == _cleanCommand) {
-        await _fileLogHandler.clean();
+        if (_isInitialized) {
+          await _fileLogHandler.clean();
+        }
         _sendPort.send(cleanCompletedMessage);
+        _receivePort.close();
       }
     });
   }
@@ -277,6 +298,8 @@ class _FileLoggerWorker {
   final SendPort _sendPort;
   late final ReceivePort _receivePort;
   late final FileLogHandler _fileLogHandler;
+  bool _isInitialized = false;
+  final List<BDLogRecord> _pendingRecords = <BDLogRecord>[];
 
   void _initialise(_FileLogHandlerOptions options) {
     _fileLogHandler = FileLogHandler(
@@ -286,10 +309,18 @@ class _FileLoggerWorker {
       logFileDirectory: options.logFileDirectory,
       supportedLevels: _mapLevels(options.supportedLevels),
     );
+    _isInitialized = true;
   }
 
-  void _processRequest(BDLogRecord record) {
-    _fileLogHandler.handleRecord(record);
+  Future<void> _processPendingRecords() async {
+    for (final BDLogRecord record in _pendingRecords) {
+      await _processRequest(record);
+    }
+    _pendingRecords.clear();
+  }
+
+  Future<void> _processRequest(BDLogRecord record) async {
+    await _fileLogHandler.handleRecord(record);
   }
 
   static List<BDLevel> _mapLevels(List<int> supportedLevels) {

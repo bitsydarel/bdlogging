@@ -15,9 +15,7 @@ class BDLogRecord {
     this.isFatal = false,
   })  : time = DateTime.now(),
         assert(
-          (isFatal && error != null) ||
-              (!isFatal && error != null) ||
-              error == null,
+          !isFatal || error != null,
           'isFatal can only be used with error',
         );
 
@@ -52,13 +50,14 @@ class BDLogRecord {
           isFatal == other.isFatal;
 
   @override
-  int get hashCode =>
-      level.hashCode ^
-      message.hashCode ^
-      error.hashCode ^
-      time.hashCode ^
-      stackTrace.hashCode ^
-      isFatal.hashCode;
+  int get hashCode => Object.hash(
+        level,
+        message,
+        error,
+        time,
+        stackTrace,
+        isFatal,
+      );
 
   @override
   String toString() {

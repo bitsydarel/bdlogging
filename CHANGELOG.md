@@ -1,3 +1,17 @@
+## 1.3.3
+
+* Fixed race condition in `clean()` method where concurrent calls could cause callers to wait forever.
+* Fixed `LateInitializationError` when log records arrive before worker initialization.
+* Fixed ReceivePort resource leaks in both main and worker isolates.
+* Fixed redundant `ErrorController` double-close in `destroy()`.
+* Fixed `BDLogRecord` assertion for `isFatal` flag to properly require an error.
+* Added `maxFilesCount > 0` validation to prevent immediate log file deletion.
+* Improved `DateFormat` performance by caching instance as static final.
+* Improved `BDLogRecord.hashCode` using `Object.hash()` for fewer collisions.
+* Added `const` constructor to `BDLogError` for performance.
+* Fixed log record ordering by awaiting `handleRecord` in worker.
+* Added comprehensive regression tests for all fixes.
+
 ## 1.3.2
 
 * Fixed bug in IsolateFileLogHandler where success and error log levels were not being written to file.
