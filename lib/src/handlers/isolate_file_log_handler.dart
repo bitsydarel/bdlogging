@@ -148,7 +148,7 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
   ///
   /// This method processes two types of messages:
   /// - [SendPort]: The worker's send port for communication
-  /// - [_cleanCompletedMessage]: Signal that cleanup is complete
+  /// - [cleanCompletedMessage]: Signal that cleanup is complete
   ///
   /// The method includes guards to prevent completing an already
   /// completed Completer, which can happen when Isolate.spawn sends
@@ -162,31 +162,47 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
     Completer<SendPort> sendPortCompleter,
   ) {
     if (message is SendPort) {
-      final SendPort workerPort = message
-        ..send(
-          _FileLogHandlerOptions(
-            logFileDirectory: logFileDirectory,
-            maxFilesCount: maxFilesCount,
-            logNamePrefix: logNamePrefix,
-            maxLogSize: maxLogSizeInMb,
-            supportedLevels: supportedLevels
-                .map((BDLevel level) => level.importance)
-                .toList(),
-          ),
-        );
-      // Fix: Guard against completing an already completed Completer.
-      // This can happen when Isolate.spawn sends multiple messages
-      // (e.g., error/exit messages) to the same port before or after
-      // the SendPort message, especially during rapid background callbacks.
-      if (!sendPortCompleter.isCompleted) {
-        sendPortCompleter.complete(workerPort);
-      }
+      _handleSendPortMessage(message, sendPortCompleter);
     } else if (message == cleanCompletedMessage) {
-      _isolate?.kill(priority: Isolate.immediate);
-      // Fix: Guard against completing an already completed Completer.
-      if (_cleanCompleter != null && !_cleanCompleter!.isCompleted) {
-        _cleanCompleter?.complete();
-      }
+      _handleCleanCompletedMessage();
+    }
+  }
+
+  /// Handles the SendPort message from the worker isolate.
+  ///
+  /// Sends configuration options to the worker and completes
+  /// the sendPortCompleter with the worker's port.
+  void _handleSendPortMessage(
+    SendPort workerPort,
+    Completer<SendPort> sendPortCompleter,
+  ) {
+    workerPort.send(
+      _FileLogHandlerOptions(
+        logFileDirectory: logFileDirectory,
+        maxFilesCount: maxFilesCount,
+        logNamePrefix: logNamePrefix,
+        maxLogSize: maxLogSizeInMb,
+        supportedLevels:
+            supportedLevels.map((BDLevel level) => level.importance).toList(),
+      ),
+    );
+    // Guard against completing an already completed Completer.
+    // This can happen when Isolate.spawn sends multiple messages
+    // (e.g., error/exit messages) to the same port before or after
+    // the SendPort message, especially during rapid background callbacks.
+    if (!sendPortCompleter.isCompleted) {
+      sendPortCompleter.complete(workerPort);
+    }
+  }
+
+  /// Handles the clean completed message from the worker isolate.
+  ///
+  /// Kills the isolate and completes the clean completer.
+  void _handleCleanCompletedMessage() {
+    _isolate?.kill(priority: Isolate.immediate);
+    // Guard against completing an already completed Completer.
+    if (_cleanCompleter != null && !_cleanCompleter!.isCompleted) {
+      _cleanCompleter?.complete();
     }
   }
 
@@ -279,20 +295,12 @@ class _FileLoggerWorker {
   static List<BDLevel> _mapLevels(List<int> supportedLevels) {
     final Set<BDLevel> levels = <BDLevel>{};
 
-    for (final int level in supportedLevels) {
-      switch (level) {
-        case 3:
-          levels.add(BDLevel.debug);
+    for (final int importance in supportedLevels) {
+      for (final BDLevel level in BDLevel.values) {
+        if (level.importance == importance) {
+          levels.add(level);
           break;
-        case 4:
-          levels.add(BDLevel.info);
-          break;
-        case 5:
-          levels.add(BDLevel.warning);
-          break;
-        case 6:
-          levels.add(BDLevel.error);
-          break;
+        }
       }
     }
 
