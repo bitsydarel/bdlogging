@@ -1,3 +1,7 @@
+## 1.4.0
+
+* Updated bdlogging dependency to ^1.4.0.
+
 ## 1.3.2
 
 * Updated bdlogging dependency to ^1.3.2.
