@@ -41,7 +41,7 @@ Each encryption algorithm has its own decryption tool and documentation:
 
 | Algorithm | Encryptor Class | Decryption Guide |
 |-----------|-----------------|------------------|
-| AES-GCM | `AesGcmSensitiveDataEncryptor` | [tools/aes-gcm/](tools/aes-gcm/) |
+| AES-GCM | `AesGcmSensitiveDataEncryptor` | [scripts/aes-gcm/](scripts/aes-gcm/) |
 
 **For QA/Support staff**: Each algorithm folder contains a browser-based decryption tool (`decrypt.html`) that requires no programming knowledge. Just open it in your browser, paste the encrypted value, and enter the password.
 
