@@ -147,7 +147,7 @@ void main() {
       final ConsoleLogHandler handler = ConsoleLogHandler.private(
         BDLevel.values,
         const DefaultLogFormatter(),
-        (String line) => printedLines.add(line),
+        printedLines.add,
       );
 
       final BDLogRecord multiLineRecord = BDLogRecord(
@@ -167,7 +167,7 @@ void main() {
       final ConsoleLogHandler handler = ConsoleLogHandler.private(
         BDLevel.values,
         const DefaultLogFormatter(),
-        (String line) => printedLines.add(line),
+        printedLines.add,
       );
 
       final BDLogRecord emptyRecord = BDLogRecord(
@@ -210,7 +210,7 @@ void main() {
       final ConsoleLogHandler handler = ConsoleLogHandler.private(
         BDLevel.values,
         const DefaultLogFormatter(),
-        (String line) => printedLines.add(line),
+        printedLines.add,
       );
 
       final BDLogRecord recordWithError = BDLogRecord(
@@ -241,6 +241,7 @@ void main() {
 
     test('should return true for all levels when all levels are supported', () {
       final ConsoleLogHandler handler = ConsoleLogHandler(
+        // ignore: avoid_redundant_argument_values
         supportedLevels: BDLevel.values,
       );
 

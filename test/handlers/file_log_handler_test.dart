@@ -28,6 +28,42 @@ void main() {
     }
   });
 
+  group('constructor', () {
+    test('should throw assertion error for maxFilesCount <= 0', () {
+      expect(
+        () => FileLogHandler(
+          logNamePrefix: 'test',
+          maxLogSizeInMb: 5,
+          maxFilesCount: 0,
+          logFileDirectory: directory,
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+
+      expect(
+        () => FileLogHandler(
+          logNamePrefix: 'test',
+          maxLogSizeInMb: 5,
+          maxFilesCount: -1,
+          logFileDirectory: directory,
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+    });
+
+    test('should allow maxFilesCount greater than zero', () {
+      expect(
+        () => FileLogHandler(
+          logNamePrefix: 'test',
+          maxLogSizeInMb: 5,
+          maxFilesCount: 1,
+          logFileDirectory: directory,
+        ),
+        returnsNormally,
+      );
+    });
+  });
+
   group('handleRecord', () {
     test('should call initializeFileSink if writer is null', () async {
       final FileLogHandler handler = FileLogHandler(
@@ -417,7 +453,7 @@ void main() {
   group('removeOldLogFilesIfRequired', () {
     test('should delete oldest files when exceeding maxFilesCount', () {
       // Create test files with different indices
-      final String testFileName =
+      const String testFileName =
           'remove_test${FileLogHandler.logFileNameSuffix}';
 
       final File file0 = File(path.join(directory.path, '${testFileName}0.log'))
@@ -431,14 +467,12 @@ void main() {
       final File file4 = File(path.join(directory.path, '${testFileName}4.log'))
         ..createSync();
 
-      final FileLogHandler handler = FileLogHandler(
+      FileLogHandler(
         logNamePrefix: 'remove_test',
         maxLogSizeInMb: 1,
         maxFilesCount: 3,
         logFileDirectory: directory,
-      );
-
-      handler.removeOldLogFilesIfRequired();
+      ).removeOldLogFilesIfRequired();
 
       // Should have deleted the 2 oldest files (file0 and file1)
       expect(file0.existsSync(), isFalse);
@@ -449,7 +483,7 @@ void main() {
     });
 
     test('should not delete files when under maxFilesCount', () {
-      final String testFileName =
+      const String testFileName =
           'under_limit${FileLogHandler.logFileNameSuffix}';
 
       final File file0 = File(path.join(directory.path, '${testFileName}0.log'))
@@ -457,14 +491,12 @@ void main() {
       final File file1 = File(path.join(directory.path, '${testFileName}1.log'))
         ..createSync();
 
-      final FileLogHandler handler = FileLogHandler(
+      FileLogHandler(
         logNamePrefix: 'under_limit',
         maxLogSizeInMb: 1,
         maxFilesCount: 5,
         logFileDirectory: directory,
-      );
-
-      handler.removeOldLogFilesIfRequired();
+      ).removeOldLogFilesIfRequired();
 
       // Both files should still exist
       expect(file0.existsSync(), isTrue);
@@ -472,7 +504,7 @@ void main() {
     });
 
     test('should not delete files when at exactly maxFilesCount', () {
-      final String testFileName =
+      const String testFileName =
           'exact_limit${FileLogHandler.logFileNameSuffix}';
 
       final File file0 = File(path.join(directory.path, '${testFileName}0.log'))
@@ -482,14 +514,12 @@ void main() {
       final File file2 = File(path.join(directory.path, '${testFileName}2.log'))
         ..createSync();
 
-      final FileLogHandler handler = FileLogHandler(
+      FileLogHandler(
         logNamePrefix: 'exact_limit',
         maxLogSizeInMb: 1,
         maxFilesCount: 3,
         logFileDirectory: directory,
-      );
-
-      handler.removeOldLogFilesIfRequired();
+      ).removeOldLogFilesIfRequired();
 
       // All files should still exist
       expect(file0.existsSync(), isTrue);
@@ -506,14 +536,12 @@ void main() {
 
       expect(nonExistentDir.existsSync(), isFalse);
 
-      final FileLogHandler handler = FileLogHandler(
+      FileLogHandler(
         logNamePrefix: 'auto_create',
         maxLogSizeInMb: 1,
         maxFilesCount: 5,
         logFileDirectory: nonExistentDir,
-      );
-
-      handler.initializeFileSink(nonExistentDir);
+      ).initializeFileSink(nonExistentDir);
 
       expect(nonExistentDir.existsSync(), isTrue);
     });
@@ -525,14 +553,12 @@ void main() {
 
       expect(nestedDir.existsSync(), isFalse);
 
-      final FileLogHandler handler = FileLogHandler(
+      FileLogHandler(
         logNamePrefix: 'nested_create',
         maxLogSizeInMb: 1,
         maxFilesCount: 5,
         logFileDirectory: nestedDir,
-      );
-
-      handler.initializeFileSink(nestedDir);
+      ).initializeFileSink(nestedDir);
 
       expect(nestedDir.existsSync(), isTrue);
     });
@@ -540,9 +566,9 @@ void main() {
 
   group('getLogFiles', () {
     test('should return only files matching logNamePrefix', () {
-      final String matchingPrefix =
+      const String matchingPrefix =
           'matching${FileLogHandler.logFileNameSuffix}';
-      final String otherPrefix = 'other${FileLogHandler.logFileNameSuffix}';
+      const String otherPrefix = 'other${FileLogHandler.logFileNameSuffix}';
 
       // Create matching files
       File(path.join(directory.path, '${matchingPrefix}0.log')).createSync();
@@ -571,7 +597,7 @@ void main() {
     });
 
     test('should ignore directories in log directory', () {
-      final String prefix = 'dir_test${FileLogHandler.logFileNameSuffix}';
+      const String prefix = 'dir_test${FileLogHandler.logFileNameSuffix}';
 
       // Create a matching file
       File(path.join(directory.path, '${prefix}0.log')).createSync();

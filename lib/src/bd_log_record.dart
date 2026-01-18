@@ -7,13 +7,15 @@ class BDLogRecord {
   /// Create a new Logging record.
   /// Logging record's [level] is required.
   /// Logging record's [message] is required.
+  /// Logging record's [time] can be provided to preserve timestamps.
   BDLogRecord(
     this.level,
     this.message, {
     this.error,
     this.stackTrace,
     this.isFatal = false,
-  })  : time = DateTime.now(),
+    DateTime? time,
+  })  : time = time ?? DateTime.now(),
         assert(
           !isFatal || error != null,
           'isFatal can only be used with error',
@@ -26,6 +28,10 @@ class BDLogRecord {
   final String message;
 
   /// Logging record's Error.
+  ///
+  /// **Security Warning:** This field is not encrypted and may contain
+  /// sensitive information. Avoid including sensitive data in error objects
+  /// as they will be logged in plaintext by most handlers.
   final Object? error;
 
   /// Logging record's time of creation.
