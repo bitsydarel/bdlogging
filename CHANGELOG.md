@@ -1,3 +1,14 @@
+## 1.4.0
+
+* Added `EncryptedIsolateFileLogHandler` for encrypting sensitive data in log messages (passwords, tokens, emails, phone numbers).
+* Added `SensitiveDataEncryptor` interface with `AesGcmSensitiveDataEncryptor` implementation using AES-GCM encryption.
+* Added `SensitiveDataMatcher` interface with `RegexSensitiveDataMatcher` for customizable sensitive data detection patterns.
+* Added configurable encryption failure handlers: `PlaintextFallbackHandler`, `MarkerFallbackHandler`, `RedactFallbackHandler`.
+* Added browser-based decryption tool at `tools/aes-gcm/decrypt.html` for QA/support staff.
+* Added security warnings in documentation about error objects not being encrypted.
+* Improved `BDLogger` destroy flow with `_isDestroying` flag to prevent log dropping during shutdown.
+* Improved log processing race condition handling.
+
 ## 1.3.3
 
 * Fixed race condition in `clean()` method where concurrent calls could cause callers to wait forever.
