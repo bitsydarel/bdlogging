@@ -47,15 +47,47 @@ class RegexSensitiveDataMatcher extends SensitiveDataMatcher {
   static final List<SensitivePattern> defaultPatterns = <SensitivePattern>[
     SensitivePattern(
       RegExp(
-        r'(?:password|pwd|passcode)\s*[:=]\s*([^\s,;]+)',
+        r'''["']?(?:password|passwd|pwd|passcode)["']?\s*[:=]\s*["']?([^\s,;"'&]+)["']?''',
         caseSensitive: false,
       ),
       group: 1,
     ),
     SensitivePattern(
       RegExp(
-        '(?:token|api[_-]?key|auth[_-]?token|access[_-]?token)'
-        r'\s*[:=]\s*([^\s,;]+)',
+        r'''["']?authorization["']?\s*[:=]\s*["']?(?:bearer|token)\s+["']?([^\s,;"'&]+)["']?''',
+        caseSensitive: false,
+      ),
+      group: 1,
+    ),
+    SensitivePattern(
+      RegExp(
+        r'''["']?authorization["']?\s*[:=]\s*["']?basic\s+["']?([^\s,;"'&]+)["']?''',
+        caseSensitive: false,
+      ),
+      group: 1,
+    ),
+    SensitivePattern(
+      RegExp(
+        r'''["']?(?:token|auth[\s_-]*token|access[\s_-]*token|'''
+        r'''refresh[\s_-]*token|id[\s_-]*token|session[\s_-]*token|jwt)["']?'''
+        r'''\s*[:=]\s*["']?([^\s,;"'&]+)["']?''',
+        caseSensitive: false,
+      ),
+      group: 1,
+    ),
+    SensitivePattern(
+      RegExp(
+        r'''["']?(?:api[\s_-]*key|x[\s_-]*api[\s_-]*key|'''
+        r'''client[\s_-]*secret|client[\s_-]*key|secret[\s_-]*key|'''
+        r'''private[\s_-]*key|access[\s_-]*key)["']?'''
+        r'''\s*[:=]\s*["']?([^\s,;"'&]+)["']?''',
+        caseSensitive: false,
+      ),
+      group: 1,
+    ),
+    SensitivePattern(
+      RegExp(
+        r'''["']?(?:credential(?:s)?|secret)["']?\s*[:=]\s*["']?([^\s,;"'&]+)["']?''',
         caseSensitive: false,
       ),
       group: 1,
@@ -70,6 +102,7 @@ class RegexSensitiveDataMatcher extends SensitiveDataMatcher {
       RegExp(
         r'(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?)?'
         r'\d{3}[\s.-]?\d{4}',
+        caseSensitive: false,
       ),
     ),
   ];

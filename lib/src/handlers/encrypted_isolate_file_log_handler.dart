@@ -257,20 +257,26 @@ class EncryptedIsolateFileLogHandler extends IsolateFileLogHandler {
   }
 
   List<SensitiveMatch> _orderedMatches(String message) {
-    return _orderMatches(matcher.findMatches(message).toList());
+    return _orderMatches(
+      matcher.findMatches(message).toList(),
+      message.length,
+    );
   }
 
   bool _skipMatch(SensitiveMatch match, int currentIndex, int length) {
     return _isBeforeCurrentIndex(match, currentIndex) ||
-        _isOutOfBounds(match, length);
+        _isInvalidMatch(match, length);
   }
 
   bool _isBeforeCurrentIndex(SensitiveMatch match, int currentIndex) {
     return match.start < currentIndex;
   }
 
-  bool _isOutOfBounds(SensitiveMatch match, int length) {
-    return match.start > length || match.end > length;
+  bool _isInvalidMatch(SensitiveMatch match, int length) {
+    return match.start < 0 ||
+        match.end <= match.start ||
+        match.start > length ||
+        match.end > length;
   }
 
   String _substring(String message, int start, int end) {
@@ -301,7 +307,7 @@ class EncryptedIsolateFileLogHandler extends IsolateFileLogHandler {
     );
   }
 
-  List<SensitiveMatch> _orderMatches(List<SensitiveMatch> matches) {
+  List<SensitiveMatch> _orderMatches(List<SensitiveMatch> matches, int length) {
     if (matches.isEmpty) {
       return matches;
     }
@@ -311,27 +317,36 @@ class EncryptedIsolateFileLogHandler extends IsolateFileLogHandler {
       if (startCompare != 0) {
         return startCompare;
       }
-      return a.end.compareTo(b.end);
+      return b.end.compareTo(a.end);
     });
 
-    return _dedupeMatches(matches);
+    return _mergeMatches(matches, length);
   }
 
-  List<SensitiveMatch> _dedupeMatches(List<SensitiveMatch> matches) {
-    final List<SensitiveMatch> deduped = <SensitiveMatch>[];
+  List<SensitiveMatch> _mergeMatches(
+    List<SensitiveMatch> matches,
+    int length,
+  ) {
+    final List<SensitiveMatch> merged = <SensitiveMatch>[];
     for (final SensitiveMatch match in matches) {
-      if (_shouldAddMatch(deduped, match)) {
-        deduped.add(match);
+      if (_isInvalidMatch(match, length)) {
+        continue;
+      }
+      if (merged.isEmpty) {
+        merged.add(match);
+        continue;
+      }
+      final SensitiveMatch last = merged.last;
+      if (match.start <= last.end) {
+        final int end = match.end > last.end ? match.end : last.end;
+        merged[merged.length - 1] = SensitiveMatch(
+          start: last.start,
+          end: end,
+        );
+      } else {
+        merged.add(match);
       }
     }
-    return deduped;
-  }
-
-  bool _shouldAddMatch(List<SensitiveMatch> deduped, SensitiveMatch match) {
-    if (deduped.isEmpty) {
-      return true;
-    }
-    final SensitiveMatch last = deduped.last;
-    return match.start >= last.end;
+    return merged;
   }
 }
