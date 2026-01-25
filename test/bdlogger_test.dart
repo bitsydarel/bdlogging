@@ -496,10 +496,14 @@ void main() {
           StreamController<BDLogError>.broadcast(),
         );
 
+        void logRecord(final BDLevel level, final String message) {
+          logger.log(level, message);
+        }
+
         // Add records in specific order
-        logger.log(BDLevel.info, 'First');
-        logger.log(BDLevel.warning, 'Second');
-        logger.log(BDLevel.error, 'Third');
+        logRecord(BDLevel.info, 'First');
+        logRecord(BDLevel.warning, 'Second');
+        logRecord(BDLevel.error, 'Third');
 
         await waitForProcessing(logger);
 
@@ -660,10 +664,11 @@ void main() {
           StreamController<BDLogError>.broadcast(),
         );
 
-        logger.info('Test message');
-        expect(logger.processingTask, isNotNull);
+        final Completer<void>? processingTask =
+            (logger..info('Test message')).processingTask;
+        expect(processingTask, isNotNull);
 
-        await logger.processingTask!.future;
+        await processingTask!.future;
         expect(logger.recordQueue, isEmpty);
         expect(handler.howManyTimeHandleWasCall, equals(1));
 
@@ -838,6 +843,9 @@ void main() {
         await logger.destroy();
 
         expect(errorController.isClosed, isTrue);
+        if (!errorController.isClosed) {
+          await errorController.close();
+        }
       });
     });
 
@@ -870,11 +878,15 @@ void main() {
         );
 
         // Should allow positive values
-        logger.processingBatchSize = 1;
-        expect(logger.processingBatchSize, equals(1));
+        expect(
+          (logger..processingBatchSize = 1).processingBatchSize,
+          equals(1),
+        );
 
-        logger.processingBatchSize = 100;
-        expect(logger.processingBatchSize, equals(100));
+        expect(
+          (logger..processingBatchSize = 100).processingBatchSize,
+          equals(100),
+        );
       });
 
       test('batch size change during processing takes effect', () async {
@@ -921,10 +933,10 @@ void main() {
         expect(logger.recordQueue, hasLength(5));
 
         // Add handler - should trigger processing
-        logger.addHandler(handler);
-
         // Change batch size - should not affect current processing
-        logger.processingBatchSize = 10;
+        logger
+          ..addHandler(handler)
+          ..processingBatchSize = 10;
 
         await waitForProcessing(logger);
 
@@ -1084,9 +1096,9 @@ void main() {
       test('destroy resets singleton allowing new instance', () async {
         final BDLogger original = BDLogger();
         final TestLogHandler handler = TestLogHandler();
-        original.addHandler(handler);
-
-        original.info('Before destroy');
+        original
+          ..addHandler(handler)
+          ..info('Before destroy');
         await waitForProcessing(original);
         expect(handler.howManyTimeHandleWasCall, equals(1));
 
@@ -1098,18 +1110,20 @@ void main() {
 
         // New instance should work
         final TestLogHandler newHandler = TestLogHandler();
-        afterDestroy.addHandler(newHandler);
-        afterDestroy.info('After destroy');
+        afterDestroy
+          ..addHandler(newHandler)
+          ..info('After destroy');
         await waitForProcessing(afterDestroy);
         expect(newHandler.howManyTimeHandleWasCall, equals(1));
       });
 
       test('multiple destroy calls on same instance are safe', () async {
         final BDLogger logger = BDLogger();
-        logger.addHandler(TestLogHandler());
+        final Future<void> firstDestroy =
+            (logger..addHandler(TestLogHandler())).destroy();
 
         // First destroy
-        await logger.destroy();
+        await firstDestroy;
 
         // Second destroy should complete without error
         await expectLater(logger.destroy(), completes);
@@ -1117,9 +1131,10 @@ void main() {
 
       test('logging after destroy on old instance does not crash', () async {
         final BDLogger logger = BDLogger();
-        logger.addHandler(TestLogHandler());
+        final Future<void> destroyFuture =
+            (logger..addHandler(TestLogHandler())).destroy();
 
-        await logger.destroy();
+        await destroyFuture;
 
         // Logging on destroyed instance should not crash
         // (though it may not be processed since singleton is reset)
@@ -1148,73 +1163,98 @@ void main() {
 
   group('Handler Management Race Conditions', () {
     test(
-        'records should not be lost when handler removed and re-added during processing',
-        () async {
+        'records should not be lost when handler removed and re-added '
+        'during processing', () async {
       final SlowTestHandler handler = SlowTestHandler(
         delay: const Duration(milliseconds: 50),
       );
       final StreamController<BDLogError> errorController =
           StreamController<BDLogError>.broadcast();
       final BDLogger logger = BDLogger.private(
-        {handler},
+        <BDLogHandler>{handler},
         errorController,
         2, // Small batch size for timing control
       );
 
-      // Phase 1: Start processing with just 2 records (exactly one batch)
-      logger.log(BDLevel.info, 'Record 1');
-      logger.log(BDLevel.info, 'Record 2');
+      void logInfo(final String message) {
+        logger.log(BDLevel.info, message);
+      }
 
-      // Phase 2: Wait for batch to start, then remove handler before it completes
-      await Future.delayed(
-          const Duration(milliseconds: 10)); // After first record starts
-      logger.removeHandler(handler);
+      void addLogHandler() {
+        logger.addHandler(handler);
+      }
+
+      void removeLogHandler() {
+        logger.removeHandler(handler);
+      }
+
+      // Phase 1: Start processing with just 2 records (exactly one batch)
+      logInfo('Record 1');
+      logInfo('Record 2');
+
+      // Phase 2: Wait for batch to start, then remove handler.
+      // After first record starts.
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      removeLogHandler();
       expect(logger.handlers, isEmpty);
 
       // Phase 3: Add records while no handlers exist - these should queue
-      logger.log(BDLevel.info, 'Queued record 1');
-      logger.log(BDLevel.info, 'Queued record 2');
+      logInfo('Queued record 1');
+      logInfo('Queued record 2');
 
-      // Phase 4: Re-add handler - this should trigger processing of queued records
-      logger.addHandler(handler);
+      // Phase 4: Re-add handler to process queued records.
+      addLogHandler();
 
       // Phase 5: Wait for all processing to complete
-      await Future.delayed(
-          const Duration(milliseconds: 600)); // Allow time for all records
+      // Allow time for all records.
+      await Future<void>.delayed(const Duration(milliseconds: 600));
 
       // Verify all records are processed despite handler removal/re-addition
-      expect(handler.processedRecords, hasLength(4),
-          reason:
-              'All records should be processed despite handler removal/re-addition');
-      expect(logger.processingTask!.isCompleted, isTrue,
-          reason: 'Processing should complete successfully');
-      expect(logger.recordQueue, isEmpty,
-          reason: 'No records should remain unprocessed');
+      expect(
+        handler.processedRecords,
+        hasLength(4),
+        reason: 'All records should be processed despite handler '
+            'removal/re-addition',
+      );
+      expect(
+        logger.processingTask!.isCompleted,
+        isTrue,
+        reason: 'Processing should complete successfully',
+      );
+      expect(
+        logger.recordQueue,
+        isEmpty,
+        reason: 'No records should remain unprocessed',
+      );
 
       await logger.destroy();
       await errorController.close();
     });
 
     test(
-        'queued records should be processed when handler is re-added during active processing',
-        () async {
+        'queued records should be processed when handler is re-added '
+        'during active processing', () async {
       final SlowTestHandler handler = SlowTestHandler(
         delay: const Duration(milliseconds: 100),
       );
       final StreamController<BDLogError> errorController =
           StreamController<BDLogError>.broadcast();
       final BDLogger logger = BDLogger.private(
-        {handler},
+        <BDLogHandler>{handler},
         errorController,
         1, // Process one record at a time
       );
 
+      void logInfo(final String message) {
+        logger.log(BDLevel.info, message);
+      }
+
       // Start with one record to begin processing
-      logger.log(BDLevel.info, 'Initial record');
+      logInfo('Initial record');
 
       // Wait for processing to complete the first record
-      await Future.delayed(
-          const Duration(milliseconds: 120)); // More than 100ms for one record
+      // More than 100ms for one record.
+      await Future<void>.delayed(const Duration(milliseconds: 120));
 
       // Remove handler while processing is active
       logger.removeHandler(handler);
@@ -1222,51 +1262,61 @@ void main() {
 
       // Add multiple records while no handlers exist - these should all queue
       for (int i = 0; i < 5; i++) {
-        logger.log(BDLevel.info, 'Queued record $i');
+        logInfo('Queued record $i');
       }
 
       // Verify records are queued but not processed
       expect(logger.recordQueue, hasLength(5));
-      expect(handler.processedRecords,
-          hasLength(1)); // Only initial record processed
+      // Only initial record processed.
+      expect(handler.processedRecords, hasLength(1));
 
       // Re-add handler - this should trigger processing of all queued records
       logger.addHandler(handler);
 
       // Wait for all processing to complete
-      await Future.delayed(
-          const Duration(milliseconds: 800)); // Time for 5 records
+      // Time for 5 records.
+      await Future<void>.delayed(const Duration(milliseconds: 800));
 
       // All records should now be processed
-      expect(handler.processedRecords, hasLength(6),
-          reason:
-              'All queued records should be processed when handler is re-added');
-      expect(logger.recordQueue, isEmpty,
-          reason: 'Queue should be empty after processing completes');
+      expect(
+        handler.processedRecords,
+        hasLength(6),
+        reason: 'All queued records should be processed when handler '
+            'is re-added',
+      );
+      expect(
+        logger.recordQueue,
+        isEmpty,
+        reason: 'Queue should be empty after processing completes',
+      );
 
       await logger.destroy();
       await errorController.close();
     });
 
     test(
-        'attempt to reproduce bug: records queued during handler gap should process after handler re-add',
-        () async {
+        'attempt to reproduce bug: records queued during handler gap '
+        'should process after handler re-add', () async {
       final SlowTestHandler handler = SlowTestHandler(
         delay: const Duration(milliseconds: 50),
       );
       final StreamController<BDLogError> errorController =
           StreamController<BDLogError>.broadcast();
       final BDLogger logger = BDLogger.private(
-        {handler},
+        <BDLogHandler>{handler},
         errorController,
         1, // Process one at a time
       );
 
+      void logInfo(final String message) {
+        logger.log(BDLevel.info, message);
+      }
+
       // Start processing
-      logger.log(BDLevel.info, 'Start record');
+      logInfo('Start record');
 
       // Wait for it to complete
-      await Future.delayed(const Duration(milliseconds: 60));
+      await Future<void>.delayed(const Duration(milliseconds: 60));
 
       // Remove handler (processing task should be completed now)
       logger.removeHandler(handler);
@@ -1274,7 +1324,7 @@ void main() {
 
       // Add records while no handlers exist
       for (int i = 0; i < 3; i++) {
-        logger.log(BDLevel.info, 'Gap record $i');
+        logInfo('Gap record $i');
       }
 
       // Verify they are queued
@@ -1282,69 +1332,88 @@ void main() {
       expect(handler.processedRecords, hasLength(1));
 
       // Wait a bit to ensure no processing happens
-      await Future.delayed(const Duration(milliseconds: 100));
-      expect(logger.recordQueue, hasLength(3)); // Should still be queued
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      // Should still be queued.
+      expect(logger.recordQueue, hasLength(3));
 
       // Re-add handler - this should start processing the queued records
       logger.addHandler(handler);
 
       // Wait for processing
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
 
       // Check if all records were processed
-      expect(handler.processedRecords, hasLength(4),
-          reason: 'All records including queued ones should be processed');
-      expect(logger.recordQueue, isEmpty, reason: 'Queue should be empty');
+      expect(
+        handler.processedRecords,
+        hasLength(4),
+        reason: 'All records including queued ones should be processed',
+      );
+      expect(
+        logger.recordQueue,
+        isEmpty,
+        reason: 'Queue should be empty',
+      );
 
       await logger.destroy();
       await errorController.close();
     });
 
     test(
-        'concurrent record addition during handler transition should not lose messages',
-        () async {
+        'concurrent record addition during handler transition should not '
+        'lose messages', () async {
       final SlowTestHandler handler = SlowTestHandler(
         delay: const Duration(milliseconds: 50),
       );
       final StreamController<BDLogError> errorController =
           StreamController<BDLogError>.broadcast();
       final BDLogger logger = BDLogger.private(
-        {handler},
+        <BDLogHandler>{handler},
         errorController,
         1, // Process one at a time
       );
 
+      void logInfo(final String message) {
+        logger.log(BDLevel.info, message);
+      }
+
       // Start processing
-      logger.log(BDLevel.info, 'Initial');
+      logInfo('Initial');
 
       // Schedule handler removal and record addition concurrently
-      Future<void> concurrentOperations = Future<void>(() async {
+      final Future<void> concurrentOperations = Future<void>(() async {
         // Wait a bit, then remove handler
-        await Future.delayed(const Duration(milliseconds: 10));
+        await Future<void>.delayed(const Duration(milliseconds: 10));
         logger.removeHandler(handler);
 
         // Immediately add records while handler is being removed
         for (int i = 0; i < 5; i++) {
-          logger.log(BDLevel.info, 'Concurrent $i');
-          await Future.delayed(const Duration(milliseconds: 1)); // Small delay
+          logInfo('Concurrent $i');
+          // Small delay.
+          await Future<void>.delayed(const Duration(milliseconds: 1));
         }
 
         // Re-add handler
-        await Future.delayed(const Duration(milliseconds: 5));
+        await Future<void>.delayed(const Duration(milliseconds: 5));
         logger.addHandler(handler);
       });
 
       await concurrentOperations;
 
       // Wait for all processing to complete
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
 
       // All records should be processed
-      expect(handler.processedRecords, hasLength(6),
-          reason:
-              'All records should be processed despite concurrent operations');
-      expect(logger.recordQueue, isEmpty,
-          reason: 'No records should remain stuck in queue');
+      expect(
+        handler.processedRecords,
+        hasLength(6),
+        reason: 'All records should be processed despite concurrent '
+            'operations',
+      );
+      expect(
+        logger.recordQueue,
+        isEmpty,
+        reason: 'No records should remain stuck in queue',
+      );
 
       await logger.destroy();
       await errorController.close();
@@ -1358,43 +1427,54 @@ void main() {
       final StreamController<BDLogError> errorController =
           StreamController<BDLogError>.broadcast();
       final BDLogger logger = BDLogger.private(
-        {handler},
+        <BDLogHandler>{handler},
         errorController,
         2,
       );
 
+      void logInfo(final String message) {
+        logger.log(BDLevel.info, message);
+      }
+
       // Start with some records
       for (int i = 0; i < 4; i++) {
-        logger.log(BDLevel.info, 'Initial $i');
+        logInfo('Initial $i');
       }
 
       // Rapid handler manipulation during processing
-      Future<void> manipulation = Future<void>(() async {
+      final Future<void> manipulation = Future<void>(() async {
         for (int i = 0; i < 3; i++) {
-          await Future.delayed(const Duration(milliseconds: 15));
+          await Future<void>.delayed(const Duration(milliseconds: 15));
           logger.removeHandler(handler);
 
           // Add records while no handlers
-          logger.log(BDLevel.info, 'Gap $i');
+          logInfo('Gap $i');
 
-          await Future.delayed(const Duration(milliseconds: 5));
+          await Future<void>.delayed(const Duration(milliseconds: 5));
           logger.addHandler(handler);
 
           // Add records after handler re-added
-          logger.log(BDLevel.info, 'After $i');
+          logInfo('After $i');
         }
       });
 
       await manipulation;
 
       // Wait for all processing
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
 
-      // Count total expected records: 4 initial + 3 gap + 3 after = 10
-      expect(handler.processedRecords, hasLength(10),
-          reason:
-              'All records should be processed despite rapid handler changes');
-      expect(logger.recordQueue, isEmpty, reason: 'No records should be stuck');
+      // Count total expected records: 4 initial + 3 gap + 3 after = 10.
+      expect(
+        handler.processedRecords,
+        hasLength(10),
+        reason: 'All records should be processed despite rapid '
+            'handler changes',
+      );
+      expect(
+        logger.recordQueue,
+        isEmpty,
+        reason: 'No records should be stuck',
+      );
 
       await logger.destroy();
       await errorController.close();
@@ -1406,24 +1486,36 @@ void main() {
       final StreamController<BDLogError> errorController =
           StreamController<BDLogError>.broadcast();
       final BDLogger logger = BDLogger.private(
-        {failingHandler},
+        <BDLogHandler>{failingHandler},
         errorController,
         1,
       );
+
+      void logInfo(final String message) {
+        logger.log(BDLevel.info, message);
+      }
+
+      void addLogHandler() {
+        logger.addHandler(failingHandler);
+      }
+
+      void removeLogHandler() {
+        logger.removeHandler(failingHandler);
+      }
 
       final List<BDLogError> errors = <BDLogError>[];
       logger.onError.listen(errors.add);
 
       // Trigger processing that will fail
-      logger.log(BDLevel.info, 'Will fail');
+      logInfo('Will fail');
 
       // Remove and re-add handler during processing
-      await Future.delayed(const Duration(milliseconds: 5));
-      logger.removeHandler(failingHandler);
-      logger.log(BDLevel.info, 'During gap');
-      logger.addHandler(failingHandler);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      removeLogHandler();
+      logInfo('During gap');
+      addLogHandler();
 
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
 
       // Verify errors reported properly
       expect(errors, isNotEmpty);
@@ -1437,7 +1529,7 @@ void main() {
         () async {
       final RecordCapturingHandler handler = RecordCapturingHandler();
       final BDLogger logger = BDLogger.private(
-        {handler},
+        <BDLogHandler>{handler},
         StreamController<BDLogError>.broadcast(),
         10, // Moderate batch size
       );
@@ -1450,8 +1542,9 @@ void main() {
 
         // Simulate handler changes during load
         if (i % 200 == 0) {
-          logger.removeHandler(handler);
-          logger.addHandler(handler);
+          logger
+            ..removeHandler(handler)
+            ..addHandler(handler);
         }
       }
 

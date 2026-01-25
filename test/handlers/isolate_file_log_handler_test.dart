@@ -620,7 +620,7 @@ void main() {
       // Try to send invalid message to isolate port
       try {
         handler.handlePortMessage('invalid_message', Completer<SendPort>());
-      } catch (e) {
+      } on Object catch (_) {
         // Expected to fail or be handled
       }
 
@@ -859,6 +859,196 @@ void main() {
 
       // Clean up
       handler.clean();
+    });
+  });
+
+  group('IsolateFileLogHandler error port handling', () {
+    test('handleErrorPortMessage logs isolate error and completes completer',
+        () async {
+      final List<String> loggedMessages = <String>[];
+      final List<Object?> loggedErrors = <Object?>[];
+      final List<StackTrace?> loggedStackTraces = <StackTrace?>[];
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'error_port_error',
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          loggedMessages.add(message);
+          loggedErrors.add(error);
+          loggedStackTraces.add(stackTrace);
+        },
+      );
+
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+      final StateError testError = StateError('boom');
+      final StackTrace testStackTrace = StackTrace.current;
+
+      handler.handleErrorPortMessage(
+        <Object?>[testError, testStackTrace.toString()],
+        sendPortCompleter,
+      );
+
+      expect(loggedMessages, contains('IsolateFileLogHandler.onError'));
+      expect(loggedErrors, contains(testError));
+      expect(
+        loggedStackTraces.whereType<StackTrace>().isNotEmpty,
+        isTrue,
+      );
+
+      await expectLater(sendPortCompleter.future, throwsA(isA<StateError>()));
+
+      await handler.clean();
+    });
+
+    test('handleErrorPortMessage logs exit before init and errors', () async {
+      final List<String> loggedMessages = <String>[];
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'error_port_exit_before',
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          loggedMessages.add(message);
+        },
+      );
+
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+
+      handler.handleErrorPortMessage(null, sendPortCompleter);
+
+      expect(
+        loggedMessages,
+        contains('IsolateFileLogHandler.onExitBeforeInit'),
+      );
+      await expectLater(
+        sendPortCompleter.future,
+        throwsA(isA<StateError>()),
+      );
+
+      await handler.clean();
+    });
+
+    test('handleErrorPortMessage logs exit after clean as info', () async {
+      final List<String> loggedMessages = <String>[];
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'error_port_exit_clean',
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          loggedMessages.add(message);
+        },
+      );
+
+      final ReceivePort mockReceivePort = ReceivePort();
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+      sendPortCompleter.complete(mockReceivePort.sendPort);
+
+      handler.cleanStateForTesting = 'completed';
+      handler.handleErrorPortMessage(null, sendPortCompleter);
+
+      expect(loggedMessages, contains('IsolateFileLogHandler.onExit'));
+
+      mockReceivePort.close();
+      await handler.clean();
+    });
+
+    test('handleErrorPortMessage logs unexpected exit', () async {
+      final List<String> loggedMessages = <String>[];
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'error_port_exit_unexpected',
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          loggedMessages.add(message);
+        },
+      );
+
+      final ReceivePort mockReceivePort = ReceivePort();
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+      sendPortCompleter.complete(mockReceivePort.sendPort);
+
+      handler.cleanStateForTesting = 'requested';
+      handler.handleErrorPortMessage(null, sendPortCompleter);
+
+      expect(
+        loggedMessages,
+        contains('IsolateFileLogHandler.onExitUnexpected'),
+      );
+
+      mockReceivePort.close();
+      await handler.clean();
+    });
+
+    test('handleErrorPortMessage logs unexpected exit after clean failure',
+        () async {
+      final List<String> loggedMessages = <String>[];
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'error_port_exit_failed',
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          loggedMessages.add(message);
+        },
+      );
+
+      final ReceivePort mockReceivePort = ReceivePort();
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+      sendPortCompleter.complete(mockReceivePort.sendPort);
+
+      handler.cleanStateForTesting = 'failed';
+      handler.handleErrorPortMessage(null, sendPortCompleter);
+
+      expect(
+        loggedMessages,
+        contains('IsolateFileLogHandler.onExitUnexpected'),
+      );
+
+      mockReceivePort.close();
+      await handler.clean();
+    });
+
+    test('handleErrorPortMessage ignores unknown message types', () async {
+      final List<String> loggedMessages = <String>[];
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'error_port_unknown',
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          loggedMessages.add(message);
+        },
+      );
+
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+
+      handler.handleErrorPortMessage('unexpected_message', sendPortCompleter);
+
+      expect(loggedMessages, isEmpty);
+      expect(sendPortCompleter.isCompleted, isFalse);
+
+      await handler.clean();
     });
   });
 
