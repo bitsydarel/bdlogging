@@ -1,3 +1,11 @@
+## 1.4.1
+
+* Enhanced sensitive data encryption with improved patterns for Authorization Bearer/Basic and token/API key variants, including case-insensitive, whitespace-tolerant, quote-excluding regex with query string & delimiters
+* Fixed encryption overlap merging to union adjacent/overlapping matches, preventing plaintext leaks
+* Improved BDLogger and IsolateFileLogHandler tests with helper functions, comprehensive error port handling, and race condition coverage
+* Added tests for batch size changes, singleton reset, and concurrent operations
+* Increased test coverage and improved test clarity
+
 ## 1.4.0
 
 * Added `EncryptedIsolateFileLogHandler` for encrypting sensitive data in log messages (passwords, tokens, emails, phone numbers).
