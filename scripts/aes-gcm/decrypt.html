@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AES-GCM Decryption - BDLogging</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: #f5f7fa;
+            color: #333;
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .algorithm-badge {
+            display: inline-block;
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #34495e;
+        }
+
+        .hint {
+            font-size: 13px;
+            color: #7f8c8d;
+            margin-bottom: 12px;
+        }
+
+        textarea, input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e6ed;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            transition: border-color 0.2s;
+        }
+
+        textarea:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .field-group {
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            background: #2980b9;
+        }
+
+        button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        #result {
+            display: none;
+        }
+
+        #result.show {
+            display: block;
+        }
+
+        .result-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .result-label span {
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-success {
+            background: #d5f5e3;
+            color: #27ae60;
+        }
+
+        .status-error {
+            background: #fadbd8;
+            color: #e74c3c;
+        }
+
+        #output {
+            width: 100%;
+            min-height: 80px;
+            padding: 12px;
+            background: #f8f9fa;
+            border: 2px solid #e0e6ed;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        #output.error {
+            background: #fdf2f2;
+            border-color: #e74c3c;
+            color: #c0392b;
+        }
+
+        .copy-btn {
+            margin-top: 12px;
+            background: #95a5a6;
+            width: auto;
+            padding: 10px 20px;
+            font-size: 14px;
+        }
+
+        .copy-btn:hover {
+            background: #7f8c8d;
+        }
+
+        .info-box {
+            background: #eaf4fc;
+            border-left: 4px solid #3498db;
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 24px;
+            font-size: 14px;
+            color: #2c3e50;
+        }
+
+        .info-box strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #95a5a6;
+            font-size: 13px;
+        }
+
+        .options-toggle {
+            color: #3498db;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 16px;
+            display: inline-block;
+        }
+
+        .options-toggle:hover {
+            text-decoration: underline;
+        }
+
+        .advanced-options {
+            display: none;
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .advanced-options.show {
+            display: block;
+        }
+
+        .advanced-options label {
+            font-weight: normal;
+            font-size: 14px;
+        }
+
+        .advanced-options input[type="number"] {
+            width: 120px;
+            padding: 8px;
+            border: 2px solid #e0e6ed;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Decrypt Log Value</h1>
+    <p class="subtitle">Decrypt sensitive values from BDLogging encrypted logs</p>
+    <div class="algorithm-badge">Algorithm: AES-256-GCM</div>
+
+    <div class="info-box">
+        <strong>How to use:</strong>
+        Copy the encrypted value from your log file (the long string of letters and numbers) and paste it below. Enter the password provided by your development team.
+    </div>
+
+    <div class="card">
+        <div class="field-group">
+            <label for="encrypted">Encrypted Value</label>
+            <p class="hint">Paste the encrypted text from the log file (base64 encoded string)</p>
+            <textarea id="encrypted" placeholder="Paste encrypted value here..."></textarea>
+        </div>
+
+        <div class="field-group">
+            <label for="password">Password</label>
+            <p class="hint">The encryption password (ask your development team if you don't have it)</p>
+            <input type="password" id="password" placeholder="Enter decryption password">
+        </div>
+
+        <span class="options-toggle" onclick="toggleOptions()">Advanced options</span>
+
+        <div class="advanced-options" id="advancedOptions">
+            <div class="field-group">
+                <label for="iterations">PBKDF2 Iterations</label>
+                <p class="hint">Only change this if your team uses a non-default value</p>
+                <input type="number" id="iterations" value="20000" min="1000" max="1000000">
+            </div>
+        </div>
+
+        <button onclick="decrypt()" id="decryptBtn">Decrypt</button>
+    </div>
+
+    <div class="card" id="result">
+        <div class="result-label">
+            <span>Result</span>
+            <span class="status-badge" id="statusBadge"></span>
+        </div>
+        <div id="output"></div>
+        <button class="copy-btn" onclick="copyResult()" id="copyBtn">Copy to Clipboard</button>
+    </div>
+
+    <footer>
+        BDLogging AES-GCM Decryption Tool &bull; Works entirely in your browser &bull; No data is sent anywhere
+    </footer>
+
+    <script>
+        // Constants matching the Dart implementation
+        const SALT_LENGTH = 16;
+        const NONCE_LENGTH = 12;
+        const TAG_LENGTH = 16;
+
+        function toggleOptions() {
+            const options = document.getElementById('advancedOptions');
+            options.classList.toggle('show');
+        }
+
+        function showResult(text, isError = false) {
+            const result = document.getElementById('result');
+            const output = document.getElementById('output');
+            const badge = document.getElementById('statusBadge');
+            const copyBtn = document.getElementById('copyBtn');
+
+            result.classList.add('show');
+            output.textContent = text;
+
+            if (isError) {
+                output.classList.add('error');
+                badge.textContent = 'Error';
+                badge.className = 'status-badge status-error';
+                copyBtn.style.display = 'none';
+            } else {
+                output.classList.remove('error');
+                badge.textContent = 'Success';
+                badge.className = 'status-badge status-success';
+                copyBtn.style.display = 'inline-block';
+            }
+        }
+
+        function base64ToBytes(base64) {
+            const binaryString = atob(base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        async function deriveKey(password, salt, iterations) {
+            const encoder = new TextEncoder();
+            const passwordKey = await crypto.subtle.importKey(
+                'raw',
+                encoder.encode(password),
+                'PBKDF2',
+                false,
+                ['deriveKey']
+            );
+
+            return crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: iterations,
+                    hash: 'SHA-256'
+                },
+                passwordKey,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['decrypt']
+            );
+        }
+
+        async function decrypt() {
+            const encryptedInput = document.getElementById('encrypted').value.trim();
+            const password = document.getElementById('password').value;
+            const iterations = parseInt(document.getElementById('iterations').value) || 20000;
+            const btn = document.getElementById('decryptBtn');
+
+            // Validation
+            if (!encryptedInput) {
+                showResult('Please paste an encrypted value.', true);
+                return;
+            }
+
+            if (!password) {
+                showResult('Please enter the decryption password.', true);
+                return;
+            }
+
+            // Show loading state
+            btn.disabled = true;
+            btn.textContent = 'Decrypting...';
+
+            try {
+                // Decode base64
+                let data;
+                try {
+                    data = base64ToBytes(encryptedInput);
+                } catch (e) {
+                    throw new Error('Invalid encrypted value. Make sure you copied the entire encrypted string correctly.');
+                }
+
+                // Check minimum length
+                const minLength = SALT_LENGTH + NONCE_LENGTH + TAG_LENGTH;
+                if (data.length < minLength) {
+                    throw new Error('Encrypted value is too short. Make sure you copied the entire string.');
+                }
+
+                // Extract components
+                // Format: [salt(16) | nonce(12) | ciphertext | tag(16)]
+                const salt = data.slice(0, SALT_LENGTH);
+                const nonce = data.slice(SALT_LENGTH, SALT_LENGTH + NONCE_LENGTH);
+                const ciphertextWithTag = data.slice(SALT_LENGTH + NONCE_LENGTH);
+
+                // Derive the key
+                const key = await deriveKey(password, salt, iterations);
+
+                // Decrypt (Web Crypto expects ciphertext + tag together)
+                const decrypted = await crypto.subtle.decrypt(
+                    {
+                        name: 'AES-GCM',
+                        iv: nonce
+                    },
+                    key,
+                    ciphertextWithTag
+                );
+
+                // Decode result
+                const decoder = new TextDecoder();
+                const plaintext = decoder.decode(decrypted);
+
+                showResult(plaintext, false);
+
+            } catch (e) {
+                let errorMessage = 'Decryption failed. ';
+
+                if (e.name === 'OperationError') {
+                    errorMessage += 'The password is incorrect, or the encrypted value is corrupted.';
+                } else if (e.message) {
+                    errorMessage = e.message;
+                } else {
+                    errorMessage += 'Please check that you entered the correct password and copied the entire encrypted value.';
+                }
+
+                showResult(errorMessage, true);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Decrypt';
+            }
+        }
+
+        function copyResult() {
+            const output = document.getElementById('output');
+            navigator.clipboard.writeText(output.textContent).then(() => {
+                const btn = document.getElementById('copyBtn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 2000);
+            });
+        }
+
+        // Allow Enter key to trigger decryption from password field
+        document.getElementById('password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                decrypt();
+            }
+        });
+    </script>
+</body>
+</html>

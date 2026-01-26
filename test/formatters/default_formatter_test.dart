@@ -90,5 +90,34 @@ void main() {
         expect(result, true);
       }
     });
+
+    test('formatter should produce consistent output format', () {
+      const DefaultLogFormatter formatter = DefaultLogFormatter();
+
+      final BDLogRecord record1 = BDLogRecord(BDLevel.info, 'Message 1');
+      final BDLogRecord record2 = BDLogRecord(BDLevel.info, 'Message 2');
+
+      final String formatted1 = formatter.format(record1);
+      final String formatted2 = formatter.format(record2);
+
+      final RegExp datePattern =
+          RegExp(r'\d{2}-\d{2}-\d{4} \d{1,2}:\d{1,2}:\d{1,2}');
+
+      expect(datePattern.hasMatch(formatted1), isTrue);
+      expect(datePattern.hasMatch(formatted2), isTrue);
+    });
+
+    test('formatter should handle many records efficiently', () {
+      const DefaultLogFormatter formatter = DefaultLogFormatter();
+      final Stopwatch stopwatch = Stopwatch()..start();
+
+      for (int i = 0; i < 1000; i++) {
+        formatter.format(BDLogRecord(BDLevel.info, 'Message $i'));
+      }
+
+      stopwatch.stop();
+
+      expect(stopwatch.elapsedMilliseconds, lessThan(1000));
+    });
   });
 }

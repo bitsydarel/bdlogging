@@ -1,3 +1,5 @@
+// ignore_for_file: cascade_invocations
+
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
@@ -100,6 +102,36 @@ void main() {
           ),
           throwsA(isA<AssertionError>()),
         );
+      });
+
+      test('should throw assertion error when maxFilesCount is zero', () {
+        expect(
+          () => IsolateFileLogHandler(
+            testDirectory,
+            maxFilesCount: 0,
+          ),
+          throwsA(isA<AssertionError>()),
+        );
+      });
+
+      test('should throw assertion error when maxFilesCount is negative', () {
+        expect(
+          () => IsolateFileLogHandler(
+            testDirectory,
+            maxFilesCount: -1,
+          ),
+          throwsA(isA<AssertionError>()),
+        );
+      });
+
+      test('should allow maxFilesCount greater than zero', () {
+        final IsolateFileLogHandler handler = IsolateFileLogHandler(
+          testDirectory,
+          maxFilesCount: 1,
+        );
+
+        expect(handler.maxFilesCount, equals(1));
+        handler.clean();
       });
     });
 
@@ -218,6 +250,45 @@ void main() {
       expect(content, contains('Test error message'));
     });
 
+    test('rapid clean() calls return same future', () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'race_condition_test',
+      );
+
+      await handler.handleRecord(
+        BDLogRecord(BDLevel.info, 'Test message'),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      final Future<void> clean1 = handler.clean();
+      final Future<void> clean2 = handler.clean();
+      final Future<void> clean3 = handler.clean();
+
+      await expectLater(
+        Future.wait(<Future<void>>[clean1, clean2, clean3])
+            .timeout(const Duration(seconds: 5)),
+        completes,
+      );
+    });
+
+    test('second clean() call returns existing future while pending', () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'pending_clean_test',
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      final Future<void> firstClean = handler.clean();
+      final Future<void> secondClean = handler.clean();
+
+      await Future.wait(<Future<void>>[firstClean, secondClean]);
+
+      expect(handler.cleanCompleterForTesting?.isCompleted, isTrue);
+    });
+
     test('should write multiple log records in order', () async {
       final IsolateFileLogHandler handler = IsolateFileLogHandler(
         testDirectory,
@@ -258,6 +329,116 @@ void main() {
       expect(secondIndex, lessThan(thirdIndex));
     });
 
+    test('should buffer records sent before initialization', () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'buffered_test',
+        supportedLevels: BDLevel.values,
+      );
+
+      const int recordCount = 50;
+      for (int i = 0; i < recordCount; i++) {
+        await handler.handleRecord(
+          BDLogRecord(BDLevel.warning, 'Buffered message $i'),
+        );
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      await handler.clean();
+
+      final List<File> logFiles = testDirectory
+          .listSync()
+          .whereType<File>()
+          .where((File f) => f.path.contains('buffered_test'))
+          .toList();
+
+      expect(logFiles, isNotEmpty);
+      final String content = logFiles.first.readAsStringSync();
+
+      for (int i = 0; i < recordCount; i++) {
+        expect(
+          content,
+          contains('Buffered message $i'),
+          reason: 'Message $i should be buffered and written',
+        );
+      }
+    });
+
+    test('clean() should complete and release resources', () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'resource_cleanup_test',
+      );
+
+      await handler.handleRecord(
+        BDLogRecord(BDLevel.info, 'Resource test message'),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      await expectLater(
+        handler.clean().timeout(const Duration(seconds: 5)),
+        completes,
+      );
+
+      expect(handler.cleanCompleterForTesting?.isCompleted, isTrue);
+    });
+
+    test('multiple handlers can be created and cleaned sequentially', () async {
+      for (int i = 0; i < 5; i++) {
+        final IsolateFileLogHandler handler = IsolateFileLogHandler(
+          testDirectory,
+          logNamePrefix: 'sequential_handler_$i',
+        );
+
+        await handler.handleRecord(
+          BDLogRecord(BDLevel.info, 'Sequential message $i'),
+        );
+
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        await handler.clean();
+      }
+
+      expect(true, isTrue);
+    });
+
+    test('log records should be written in order', () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'ordering_test',
+        supportedLevels: BDLevel.values,
+      );
+
+      for (int i = 0; i < 20; i++) {
+        await handler.handleRecord(
+          BDLogRecord(BDLevel.info, 'Ordered message $i'),
+        );
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await handler.clean();
+
+      final List<File> logFiles = testDirectory
+          .listSync()
+          .whereType<File>()
+          .where((File f) => f.path.contains('ordering_test'))
+          .toList();
+
+      expect(logFiles, isNotEmpty);
+      final String content = logFiles.first.readAsStringSync();
+
+      int lastIndex = -1;
+      for (int i = 0; i < 20; i++) {
+        final int currentIndex = content.indexOf('Ordered message $i');
+        expect(
+          currentIndex,
+          greaterThan(lastIndex),
+          reason: 'Message $i should appear after message ${i - 1}',
+        );
+        lastIndex = currentIndex;
+      }
+    });
+
     test('should complete clean() successfully', () async {
       final IsolateFileLogHandler handler = IsolateFileLogHandler(
         testDirectory,
@@ -272,6 +453,37 @@ void main() {
 
       // clean() should complete without throwing
       await expectLater(handler.clean(), completes);
+    });
+
+    test('sending log records immediately should not error', () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'early_record_test',
+        supportedLevels: BDLevel.values,
+      );
+
+      for (int i = 0; i < 10; i++) {
+        await handler.handleRecord(
+          BDLogRecord(BDLevel.info, 'Immediate message $i'),
+        );
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+
+      await expectLater(handler.clean(), completes);
+
+      final List<File> logFiles = testDirectory
+          .listSync()
+          .whereType<File>()
+          .where((File f) => f.path.contains('early_record_test'))
+          .toList();
+
+      expect(logFiles, isNotEmpty);
+      final String content = logFiles.first.readAsStringSync();
+
+      for (int i = 0; i < 10; i++) {
+        expect(content, contains('Immediate message $i'));
+      }
     });
 
     test('should handle zero records gracefully', () async {
@@ -389,6 +601,122 @@ void main() {
         logFiles.first.readAsStringSync(),
         contains('Error with stacktrace'),
       );
+    });
+
+    test('should handle isolate communication failures gracefully', () async {
+      final List<String> loggedMessages = <String>[];
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'isolate_failure',
+        logFunction: (String message, {Object? error, StackTrace? stackTrace}) {
+          loggedMessages.add(message);
+        },
+      );
+
+      // Simulate sending invalid data to isolate
+      // This tests the error handling in handlePortMessage
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // Try to send invalid message to isolate port
+      try {
+        handler.handlePortMessage('invalid_message', Completer<SendPort>());
+      } on Object catch (_) {
+        // Expected to fail or be handled
+      }
+
+      await handler.clean();
+
+      // Should have logged isolate errors
+      expect(loggedMessages, isNotEmpty);
+    });
+
+    test('should recover from handler failures during isolate initialization',
+        () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'recovery_test',
+        supportedLevels: BDLevel.values,
+      );
+
+      // Send a record before isolate is fully initialized
+      await handler.handleRecord(BDLogRecord(BDLevel.info, 'Early record'));
+
+      // Wait for isolate to initialize and process
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+
+      // Send more records - should work despite early record
+      await handler.handleRecord(BDLogRecord(BDLevel.warning, 'Later record'));
+
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await handler.clean();
+
+      // Verify both records were written
+      final List<File> logFiles = testDirectory
+          .listSync()
+          .whereType<File>()
+          .where((File f) => f.path.contains('recovery_test'))
+          .toList();
+
+      expect(logFiles, isNotEmpty);
+      final String content = logFiles.first.readAsStringSync();
+      expect(content, contains('Early record'));
+      expect(content, contains('Later record'));
+    });
+
+    test('should handle concurrent handler operations', () async {
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'concurrent_test',
+        supportedLevels: BDLevel.values,
+      );
+
+      // Send multiple records concurrently
+      final List<Future<void>> futures = <Future<void>>[];
+      for (int i = 0; i < 20; i++) {
+        futures.add(
+            handler.handleRecord(BDLogRecord(BDLevel.info, 'Concurrent $i')));
+      }
+
+      await Future.wait(futures);
+      await Future<void>.delayed(const Duration(milliseconds: 1000));
+
+      await handler.clean();
+
+      // Verify all records were processed
+      final List<File> logFiles = testDirectory
+          .listSync()
+          .whereType<File>()
+          .where((File f) => f.path.contains('concurrent_test'))
+          .toList();
+
+      expect(logFiles, isNotEmpty);
+      final String content = logFiles.first.readAsStringSync();
+
+      for (int i = 0; i < 20; i++) {
+        expect(content, contains('Concurrent $i'));
+      }
+    });
+
+    test('clean command before initialization does not throw', () async {
+      final Directory localDir = Directory(
+        path.join(
+          Directory.current.path,
+          'test/resources/coverage_clean_${DateTime.now().microsecondsSinceEpoch}',
+        ),
+      )..createSync(recursive: true);
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        localDir,
+        logNamePrefix: 'coverage_clean',
+      );
+
+      await handler.clean();
+      expect(handler.cleanCompleterForTesting?.isCompleted, isTrue);
+
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      if (localDir.existsSync()) {
+        localDir.deleteSync(recursive: true);
+      }
     });
   });
 
@@ -531,6 +859,196 @@ void main() {
 
       // Clean up
       handler.clean();
+    });
+  });
+
+  group('IsolateFileLogHandler error port handling', () {
+    test('handleErrorPortMessage logs isolate error and completes completer',
+        () async {
+      final List<String> loggedMessages = <String>[];
+      final List<Object?> loggedErrors = <Object?>[];
+      final List<StackTrace?> loggedStackTraces = <StackTrace?>[];
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'error_port_error',
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          loggedMessages.add(message);
+          loggedErrors.add(error);
+          loggedStackTraces.add(stackTrace);
+        },
+      );
+
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+      final StateError testError = StateError('boom');
+      final StackTrace testStackTrace = StackTrace.current;
+
+      handler.handleErrorPortMessage(
+        <Object?>[testError, testStackTrace.toString()],
+        sendPortCompleter,
+      );
+
+      expect(loggedMessages, contains('IsolateFileLogHandler.onError'));
+      expect(loggedErrors, contains(testError));
+      expect(
+        loggedStackTraces.whereType<StackTrace>().isNotEmpty,
+        isTrue,
+      );
+
+      await expectLater(sendPortCompleter.future, throwsA(isA<StateError>()));
+
+      await handler.clean();
+    });
+
+    test('handleErrorPortMessage logs exit before init and errors', () async {
+      final List<String> loggedMessages = <String>[];
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'error_port_exit_before',
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          loggedMessages.add(message);
+        },
+      );
+
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+
+      handler.handleErrorPortMessage(null, sendPortCompleter);
+
+      expect(
+        loggedMessages,
+        contains('IsolateFileLogHandler.onExitBeforeInit'),
+      );
+      await expectLater(
+        sendPortCompleter.future,
+        throwsA(isA<StateError>()),
+      );
+
+      await handler.clean();
+    });
+
+    test('handleErrorPortMessage logs exit after clean as info', () async {
+      final List<String> loggedMessages = <String>[];
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'error_port_exit_clean',
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          loggedMessages.add(message);
+        },
+      );
+
+      final ReceivePort mockReceivePort = ReceivePort();
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+      sendPortCompleter.complete(mockReceivePort.sendPort);
+
+      handler.cleanStateForTesting = 'completed';
+      handler.handleErrorPortMessage(null, sendPortCompleter);
+
+      expect(loggedMessages, contains('IsolateFileLogHandler.onExit'));
+
+      mockReceivePort.close();
+      await handler.clean();
+    });
+
+    test('handleErrorPortMessage logs unexpected exit', () async {
+      final List<String> loggedMessages = <String>[];
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'error_port_exit_unexpected',
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          loggedMessages.add(message);
+        },
+      );
+
+      final ReceivePort mockReceivePort = ReceivePort();
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+      sendPortCompleter.complete(mockReceivePort.sendPort);
+
+      handler.cleanStateForTesting = 'requested';
+      handler.handleErrorPortMessage(null, sendPortCompleter);
+
+      expect(
+        loggedMessages,
+        contains('IsolateFileLogHandler.onExitUnexpected'),
+      );
+
+      mockReceivePort.close();
+      await handler.clean();
+    });
+
+    test('handleErrorPortMessage logs unexpected exit after clean failure',
+        () async {
+      final List<String> loggedMessages = <String>[];
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'error_port_exit_failed',
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          loggedMessages.add(message);
+        },
+      );
+
+      final ReceivePort mockReceivePort = ReceivePort();
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+      sendPortCompleter.complete(mockReceivePort.sendPort);
+
+      handler.cleanStateForTesting = 'failed';
+      handler.handleErrorPortMessage(null, sendPortCompleter);
+
+      expect(
+        loggedMessages,
+        contains('IsolateFileLogHandler.onExitUnexpected'),
+      );
+
+      mockReceivePort.close();
+      await handler.clean();
+    });
+
+    test('handleErrorPortMessage ignores unknown message types', () async {
+      final List<String> loggedMessages = <String>[];
+
+      final IsolateFileLogHandler handler = IsolateFileLogHandler(
+        testDirectory,
+        logNamePrefix: 'error_port_unknown',
+        logFunction: (
+          String message, {
+          Object? error,
+          StackTrace? stackTrace,
+        }) {
+          loggedMessages.add(message);
+        },
+      );
+
+      final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
+
+      handler.handleErrorPortMessage('unexpected_message', sendPortCompleter);
+
+      expect(loggedMessages, isEmpty);
+      expect(sendPortCompleter.isCompleted, isFalse);
+
+      await handler.clean();
     });
   });
 

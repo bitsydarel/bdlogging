@@ -17,6 +17,13 @@ typedef LogFunction = void Function(
   StackTrace? stackTrace,
 });
 
+enum _CleanState {
+  idle,
+  requested,
+  completed,
+  failed,
+}
+
 /// A implementation of [BDCleanableLogHandler]
 /// that write [BDLogRecord] to files in a different isolate.
 class IsolateFileLogHandler implements BDCleanableLogHandler {
@@ -57,6 +64,10 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
         assert(
           maxLogSizeInMb > 0,
           'maxLogSizeInMb should not be lower than zero',
+        ),
+        assert(
+          maxFilesCount > 0,
+          'maxFilesCount should be greater than zero',
         ) {
     _workerSendPort = _startLogging();
   }
@@ -95,9 +106,19 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 
   Isolate? _isolate;
 
+  ReceivePort? _receivePort;
+
+  ReceivePort? _errorPort;
+
+  StreamSubscription<Object?>? _receivePortSubscription;
+
+  StreamSubscription<Object?>? _errorPortSubscription;
+
   late final Future<SendPort> _workerSendPort;
 
   Completer<void>? _cleanCompleter;
+
+  _CleanState _cleanState = _CleanState.idle;
 
   /// Completer for the worker send port initialization.
   /// Exposed for testing purposes only.
@@ -109,11 +130,25 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
   @visibleForTesting
   Completer<void>? get cleanCompleterForTesting => _cleanCompleter;
 
+  /// Getter for clean state.
+  /// Exposed for testing purposes only.
+  @visibleForTesting
+  String get cleanStateForTesting => _cleanState.name;
+
   /// Setter for the clean completer.
   /// Exposed for testing purposes only.
   @visibleForTesting
   set cleanCompleterForTesting(Completer<void>? value) {
     _cleanCompleter = value;
+  }
+
+  /// Setter for clean state.
+  /// Exposed for testing purposes only.
+  @visibleForTesting
+  set cleanStateForTesting(String value) {
+    _cleanState = _CleanState.values.firstWhere(
+      (_CleanState state) => state.name == value,
+    );
   }
 
   @override
@@ -123,22 +158,29 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 
   Future<SendPort> _startLogging() async {
     final ReceivePort port = ReceivePort();
+    final ReceivePort errorPort = ReceivePort();
+    _receivePort = port;
+    _errorPort = errorPort;
     _isolate = await Isolate.spawn(
       _startWorker,
       port.sendPort,
       errorsAreFatal: false,
       debugName: '${logNamePrefix.toLowerCase()}_isolate_file_log_handler',
-      onError: port.sendPort,
-      onExit: port.sendPort,
+      onError: errorPort.sendPort,
+      onExit: errorPort.sendPort,
     );
 
     final Completer<SendPort> sendPortCompleter = Completer<SendPort>();
     sendPortCompleterForTesting = sendPortCompleter;
 
-    port.listen(
+    _receivePortSubscription = port.listen(
       (Object? message) => handlePortMessage(message, sendPortCompleter),
       onError: handlePortError,
       onDone: handlePortDone,
+    );
+
+    _errorPortSubscription = errorPort.listen(
+      (Object? message) => handleErrorPortMessage(message, sendPortCompleter),
     );
 
     return sendPortCompleter.future;
@@ -151,8 +193,8 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
   /// - [cleanCompletedMessage]: Signal that cleanup is complete
   ///
   /// The method includes guards to prevent completing an already
-  /// completed Completer, which can happen when Isolate.spawn sends
-  /// multiple messages (e.g., error/exit messages) to the same port.
+  /// completed Completer, which can happen if duplicate SendPort
+  /// messages arrive or tests simulate multiple messages.
   ///
   /// This method is visible for testing to allow verification
   /// of the Completer guard behavior.
@@ -165,6 +207,11 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
       _handleSendPortMessage(message, sendPortCompleter);
     } else if (message == cleanCompletedMessage) {
       _handleCleanCompletedMessage();
+    } else {
+      _logFunction(
+        'IsolateFileLogHandler.onUnexpectedMessage',
+        error: message,
+      );
     }
   }
 
@@ -187,9 +234,8 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
       ),
     );
     // Guard against completing an already completed Completer.
-    // This can happen when Isolate.spawn sends multiple messages
-    // (e.g., error/exit messages) to the same port before or after
-    // the SendPort message, especially during rapid background callbacks.
+    // This can happen if duplicate SendPort messages arrive
+    // or if tests simulate multiple messages.
     if (!sendPortCompleter.isCompleted) {
       sendPortCompleter.complete(workerPort);
     }
@@ -200,9 +246,38 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
   /// Kills the isolate and completes the clean completer.
   void _handleCleanCompletedMessage() {
     _isolate?.kill(priority: Isolate.immediate);
+    _receivePort?.close();
+    _errorPort?.close();
+    _receivePortSubscription?.cancel();
+    _errorPortSubscription?.cancel();
+    _cleanState = _CleanState.completed;
     // Guard against completing an already completed Completer.
     if (_cleanCompleter != null && !_cleanCompleter!.isCompleted) {
       _cleanCompleter?.complete();
+    }
+  }
+
+  /// Handles messages received from the error/exit port.
+  ///
+  /// This method processes two types of messages:
+  /// - List<Object?> with error and stack trace from isolate failure
+  /// - null from isolate exit
+  ///
+  /// If the worker send port has not been received yet, the
+  /// sendPortCompleter is completed with an error to avoid hanging.
+  @visibleForTesting
+  void handleErrorPortMessage(
+    Object? message,
+    Completer<SendPort> sendPortCompleter,
+  ) {
+    final List<Object?>? payload = _asIsolateErrorPayload(message);
+    if (payload != null) {
+      _handleIsolateErrorPayload(payload, sendPortCompleter);
+      return;
+    }
+
+    if (message == null) {
+      _handleIsolateExitMessage(sendPortCompleter);
     }
   }
 
@@ -211,8 +286,21 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
 
   @override
   Future<void> clean() async {
-    (await _workerSendPort).send(_cleanCommand);
+    // Guard against calling clean() multiple times concurrently.
+    // If a clean is already in progress, return the existing future.
+    if (_cleanCompleter != null && !_cleanCompleter!.isCompleted) {
+      return _cleanCompleter!.future;
+    }
     _cleanCompleter = Completer<void>();
+    _cleanState = _CleanState.requested;
+    try {
+      (await _workerSendPort).send(_cleanCommand);
+    } on Object catch (error, stackTrace) {
+      _cleanState = _CleanState.failed;
+      if (!_cleanCompleter!.isCompleted) {
+        _cleanCompleter!.completeError(error, stackTrace);
+      }
+    }
     return _cleanCompleter!.future;
   }
 
@@ -243,6 +331,74 @@ class IsolateFileLogHandler implements BDCleanableLogHandler {
   void handlePortDone() {
     _logFunction('IsolateFileLogHandler done');
   }
+
+  List<Object?>? _asIsolateErrorPayload(Object? message) {
+    if (message is List && message.length == 2) {
+      return message.cast<Object?>();
+    }
+    return null;
+  }
+
+  void _handleIsolateErrorPayload(
+    List<Object?> payload,
+    Completer<SendPort> sendPortCompleter,
+  ) {
+    final Object? error = payload[0];
+    final StackTrace? stackTrace = _parseStackTrace(payload[1]);
+    _logFunction(
+      'IsolateFileLogHandler.onError',
+      error: error,
+      stackTrace: stackTrace,
+    );
+    _completeSendPortWithErrorIfPending(
+      sendPortCompleter,
+      error ?? StateError('Isolate failed before initialization'),
+      stackTrace,
+    );
+  }
+
+  void _handleIsolateExitMessage(Completer<SendPort> sendPortCompleter) {
+    if (!sendPortCompleter.isCompleted) {
+      _logFunction('IsolateFileLogHandler.onExitBeforeInit');
+      _completeSendPortWithErrorIfPending(
+        sendPortCompleter,
+        StateError('Isolate exited before initialization'),
+        null,
+      );
+      return;
+    }
+
+    if (_cleanState == _CleanState.completed) {
+      _logFunction('IsolateFileLogHandler.onExit');
+    } else {
+      _logFunction('IsolateFileLogHandler.onExitUnexpected');
+    }
+  }
+
+  void _completeSendPortWithErrorIfPending(
+    Completer<SendPort> sendPortCompleter,
+    Object error,
+    StackTrace? stackTrace,
+  ) {
+    if (sendPortCompleter.isCompleted) {
+      return;
+    }
+    if (stackTrace != null) {
+      sendPortCompleter.completeError(error, stackTrace);
+    } else {
+      sendPortCompleter.completeError(error);
+    }
+  }
+
+  StackTrace? _parseStackTrace(Object? rawStackTrace) {
+    if (rawStackTrace is StackTrace) {
+      return rawStackTrace;
+    }
+    if (rawStackTrace is String) {
+      return StackTrace.fromString(rawStackTrace);
+    }
+    return null;
+  }
 }
 
 /// Top level function for isolate.
@@ -265,11 +421,19 @@ class _FileLoggerWorker {
     _receivePort.listen((Object? message) async {
       if (message is _FileLogHandlerOptions) {
         _initialise(message);
+        _processPendingRecords();
       } else if (message is BDLogRecord) {
-        _processRequest(message);
+        if (_isInitialized) {
+          await _processRequest(message);
+        } else {
+          _pendingRecords.add(message);
+        }
       } else if (message == _cleanCommand) {
-        await _fileLogHandler.clean();
+        if (_isInitialized) {
+          await _fileLogHandler.clean();
+        }
         _sendPort.send(cleanCompletedMessage);
+        _receivePort.close();
       }
     });
   }
@@ -277,6 +441,8 @@ class _FileLoggerWorker {
   final SendPort _sendPort;
   late final ReceivePort _receivePort;
   late final FileLogHandler _fileLogHandler;
+  bool _isInitialized = false;
+  final List<BDLogRecord> _pendingRecords = <BDLogRecord>[];
 
   void _initialise(_FileLogHandlerOptions options) {
     _fileLogHandler = FileLogHandler(
@@ -286,10 +452,18 @@ class _FileLoggerWorker {
       logFileDirectory: options.logFileDirectory,
       supportedLevels: _mapLevels(options.supportedLevels),
     );
+    _isInitialized = true;
   }
 
-  void _processRequest(BDLogRecord record) {
-    _fileLogHandler.handleRecord(record);
+  Future<void> _processPendingRecords() async {
+    for (final BDLogRecord record in _pendingRecords) {
+      await _processRequest(record);
+    }
+    _pendingRecords.clear();
+  }
+
+  Future<void> _processRequest(BDLogRecord record) async {
+    await _fileLogHandler.handleRecord(record);
   }
 
   static List<BDLevel> _mapLevels(List<int> supportedLevels) {

@@ -11,10 +11,12 @@ class DefaultLogFormatter extends BDLogFormatter {
   /// Create [DefaultLogFormatter].
   const DefaultLogFormatter();
 
+  /// Cached DateFormat instance for performance.
+  static final DateFormat _formatter = DateFormat('dd-MM-yyyy H:m:s');
+
   @override
   String format(final BDLogRecord record) {
-    final DateFormat formatter = DateFormat('dd-MM-yyyy H:m:s');
-    final String time = formatter.format(record.time);
+    final String time = _formatter.format(record.time);
 
     final StringBuffer buffer = StringBuffer()
       ..writeln()

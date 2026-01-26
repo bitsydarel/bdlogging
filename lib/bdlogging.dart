@@ -19,8 +19,11 @@ export 'src/bd_log_handler.dart';
 export 'src/bd_log_record.dart';
 export 'src/formatters/default_log_formatter.dart';
 export 'src/handlers/console_log_handler.dart';
+export 'src/handlers/encrypted_isolate_file_log_handler.dart';
 export 'src/handlers/file_log_handler.dart';
 export 'src/handlers/isolate_file_log_handler.dart';
+export 'src/security/sensitive_data_encryptor.dart';
+export 'src/security/sensitive_data_matcher.dart';
 
 /// `BDLogger` is a singleton class used for logging in Dart/Flutter applications.
 ///
@@ -83,12 +86,16 @@ class BDLogger {
     this._errorController, [
     this._processingBatchSize = defaultProcessingBatchSize,
   ]) {
+    processingTask = Completer<void>();
     _registerLogProcessingTimer();
   }
 
   /// A completer that is used to control the processing of log records.
   @visibleForTesting
   Completer<void>? processingTask;
+
+  /// Flag to prevent new logs during destroy.
+  bool _isDestroying = false;
 
   int _processingBatchSize;
 
@@ -127,7 +134,8 @@ class BDLogger {
     final bool wasEmpty = _handlers.isEmpty;
     _handlers.add(handler);
 
-    if (wasEmpty) {
+    if (wasEmpty && (processingTask == null || processingTask!.isCompleted)) {
+      processingTask = Completer<void>();
       unawaited(_registerLogProcessingTimer());
     }
   }
@@ -140,6 +148,10 @@ class BDLogger {
 
   /// Logs a message at the debug level.
   /// The message can optionally be associated with an error and a stack trace.
+  ///
+  /// **Security Warning:** The [error] parameter is not encrypted and may
+  /// contain sensitive information. Clients should not include sensitive data
+  /// in error objects as they will be logged in plaintext.
   void debug(
     final String message, {
     final dynamic error,
@@ -163,6 +175,10 @@ class BDLogger {
 
   /// Logs a message at the warning level.
   /// The message can optionally be associated with an error and a stack trace.
+  ///
+  /// **Security Warning:** The [error] parameter is not encrypted and may
+  /// contain sensitive information. Clients should not include sensitive data
+  /// in error objects as they will be logged in plaintext.
   void warning(
     final String message, {
     final String? tag,
@@ -187,6 +203,10 @@ class BDLogger {
   /// Logs a message at the error level.
   /// The message is associated with an error and can optionally
   /// be associated with a stack trace.
+  ///
+  /// **Security Warning:** The [error] parameter is not encrypted and may
+  /// contain sensitive information. Clients should not include sensitive data
+  /// in error objects as they will be logged in plaintext.
   void error(
     final String message,
     final Object error, {
@@ -212,6 +232,11 @@ class BDLogger {
   /// was made. This can be advantageous if a log listener wants to handler
   /// records of different zones differently (e.g. group log records by HTTP
   /// request if each HTTP request handler runs in it's own zone).
+  ///
+  /// **Security Warning:** The [error] parameter is not encrypted and may
+  /// contain sensitive information. Clients should not include sensitive data
+  /// (such as passwords, API keys, or personal information) in error objects
+  /// as they will be logged in plaintext by most handlers.
   void log(
     final BDLevel level,
     final String message, {
@@ -219,6 +244,10 @@ class BDLogger {
     final StackTrace? stackTrace,
     final bool? isFatal,
   }) {
+    if (_isDestroying) {
+      return; // Silently drop - logger is shutting down
+    }
+
     final BDLogRecord newLogRecord = BDLogRecord(
       level,
       message,
@@ -232,17 +261,29 @@ class BDLogger {
     final Completer<void>? task = processingTask;
 
     if (task == null || task.isCompleted) {
+      processingTask =
+          Completer<void>(); // Set BEFORE async call to prevent race
       unawaited(_registerLogProcessingTimer());
     }
   }
 
   /// Destroys the singleton instance of the `BDLogger` class.
   /// This also calls the `clean` method on every [BDCleanableLogHandler].
+  ///
+  /// Any log() calls made during destroy will be silently dropped.
   Future<void> destroy() async {
+    _isDestroying = true;
     _completeProcessingTask();
 
+    final List<BDLogHandler> remainingHandlers =
+        List<BDLogHandler>.of(_handlers);
+
     while (recordQueue.isNotEmpty) {
-      await _processLogRecord(recordQueue.removeFirst());
+      try {
+        await _processLogRecord(recordQueue.removeFirst(), remainingHandlers);
+      } on Object catch (error, stackTrace) {
+        _errorController.add(BDLogError(error, stackTrace));
+      }
     }
 
     try {
@@ -257,26 +298,29 @@ class BDLogger {
     }
 
     _handlers.clear();
+    _isDestroying = false; // Reset for potential re-initialization
 
     _instance = null;
 
-    await _errorController.sink.close();
     return _errorController.close();
   }
 
   Future<void> _registerLogProcessingTimer() async {
-    final Completer<void> resolvedTask = processingTask?.isCompleted ?? true
-        ? Completer<void>()
-        : processingTask!;
-    processingTask = resolvedTask;
+    final Completer<void> currentTask = processingTask!; // Guaranteed non-null
 
     if (_handlers.isNotEmpty) {
       final int recordsToProcess =
           min(recordQueue.length, _processingBatchSize);
+      // Copy handlers once per batch for performance (Bug #3 fix)
+      final List<BDLogHandler> batchHandlers = List<BDLogHandler>.of(_handlers);
 
       for (int i = 0; i < recordsToProcess; i++) {
         if (recordQueue.isNotEmpty) {
-          await _processLogRecord(recordQueue.removeFirst());
+          try {
+            await _processLogRecord(recordQueue.removeFirst(), batchHandlers);
+          } on Object catch (error, stackTrace) {
+            _errorController.add(BDLogError(error, stackTrace));
+          }
         }
       }
 
@@ -285,27 +329,30 @@ class BDLogger {
       }
     }
 
-    if (!resolvedTask.isCompleted) {
-      resolvedTask.complete();
+    if (!currentTask.isCompleted) {
+      currentTask.complete();
     }
   }
 
-  Future<void> _processLogRecord(final BDLogRecord record) {
-    final List<BDLogHandler> currentHandlers = <BDLogHandler>[..._handlers];
-
-    return Future.forEach(currentHandlers, (BDLogHandler handler) async {
+  Future<void> _processLogRecord(
+    final BDLogRecord record,
+    final List<BDLogHandler> handlers,
+  ) {
+    return Future.forEach(handlers, (BDLogHandler handler) async {
       if (handler.supportLevel(record.level)) {
         try {
           await handler.handleRecord(record);
         } on Object catch (error, stackTrace) {
           _errorController.add(BDLogError(error, stackTrace));
-          // note: Added so that in debug run user could see error produced by
-          // handlers while handling a log record.
-          // this code is removed when compiling to release build.
           assert(
-            false,
-            '${handler.runtimeType} could not process '
-            '$record\n$error\n${stackTrace.toString()}',
+            () {
+              Zone.current.print(
+                '${handler.runtimeType} could not process '
+                '$record\n$error\n${stackTrace.toString()}',
+              );
+              return true;
+            }(),
+            'Handler failure: ${handler.runtimeType}',
           );
         }
       }

@@ -1,3 +1,36 @@
+## 1.4.1
+
+* Enhanced sensitive data encryption with improved patterns for Authorization Bearer/Basic and token/API key variants, including case-insensitive, whitespace-tolerant, quote-excluding regex with query string & delimiters
+* Fixed encryption overlap merging to union adjacent/overlapping matches, preventing plaintext leaks
+* Improved BDLogger and IsolateFileLogHandler tests with helper functions, comprehensive error port handling, and race condition coverage
+* Added tests for batch size changes, singleton reset, and concurrent operations
+* Increased test coverage and improved test clarity
+
+## 1.4.0
+
+* Added `EncryptedIsolateFileLogHandler` for encrypting sensitive data in log messages (passwords, tokens, emails, phone numbers).
+* Added `SensitiveDataEncryptor` interface with `AesGcmSensitiveDataEncryptor` implementation using AES-GCM encryption.
+* Added `SensitiveDataMatcher` interface with `RegexSensitiveDataMatcher` for customizable sensitive data detection patterns.
+* Added configurable encryption failure handlers: `PlaintextFallbackHandler`, `MarkerFallbackHandler`, `RedactFallbackHandler`.
+* Added browser-based decryption tool at `scripts/aes-gcm/decrypt.html` for QA/support staff.
+* Added security warnings in documentation about error objects not being encrypted.
+* Improved `BDLogger` destroy flow with `_isDestroying` flag to prevent log dropping during shutdown.
+* Improved log processing race condition handling.
+
+## 1.3.3
+
+* Fixed race condition in `clean()` method where concurrent calls could cause callers to wait forever.
+* Fixed `LateInitializationError` when log records arrive before worker initialization.
+* Fixed ReceivePort resource leaks in both main and worker isolates.
+* Fixed redundant `ErrorController` double-close in `destroy()`.
+* Fixed `BDLogRecord` assertion for `isFatal` flag to properly require an error.
+* Added `maxFilesCount > 0` validation to prevent immediate log file deletion.
+* Improved `DateFormat` performance by caching instance as static final.
+* Improved `BDLogRecord.hashCode` using `Object.hash()` for fewer collisions.
+* Added `const` constructor to `BDLogError` for performance.
+* Fixed log record ordering by awaiting `handleRecord` in worker.
+* Added comprehensive regression tests for all fixes.
+
 ## 1.3.2
 
 * Fixed bug in IsolateFileLogHandler where success and error log levels were not being written to file.
